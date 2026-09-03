@@ -78,7 +78,7 @@ object GeminiRetrofitClient {
 }
 
 class GeminiAIProvider(private val projectName: String) : AIProvider {
-    override suspend fun generateResponse(prompt: String, context: List<MessageEntity>): String {
+    override suspend fun generateResponse(prompt: String, context: List<MessageEntity>, projectContext: ProjectContext?): String {
         return withContext(Dispatchers.IO) {
             val apiKey = BuildConfig.GEMINI_API_KEY
             if (apiKey.isBlank() || apiKey == "MY_GEMINI_API_KEY" || apiKey == "YOUR_GEMINI_API_KEY") {
@@ -107,7 +107,12 @@ class GeminiAIProvider(private val projectName: String) : AIProvider {
                 contents = contents,
                 systemInstruction = Content(
                     role = "user",
-                    parts = listOf(Part(text = "You are an AI coding assistant for the project '$projectName'. Provide helpful, concise responses."))
+                    parts = listOf(Part(text = buildString {
+                        append("You are an AI coding assistant for the project '$projectName'. Provide helpful, concise responses. ")
+                        if (projectContext?.currentOpenFile != null) {
+                            append("The user is currently viewing the file '${projectContext.currentOpenFile.path}'. ")
+                        }
+                    }))
                 )
             )
 

@@ -12,6 +12,8 @@ import com.example.data.LocalProjectRepository
 import com.example.data.MessageRepository
 import androidx.compose.ui.platform.LocalContext
 
+import com.example.data.ProjectFileRepository
+
 @Composable
 fun AppNavigation() {
     val navController = rememberNavController()
@@ -19,7 +21,8 @@ fun AppNavigation() {
     
     val database = AppDatabase.getDatabase(context)
     val messageRepository = MessageRepository(database.messageDao())
-    val projectRepository = LocalProjectRepository(database.projectDao(), database.messageDao())
+    val fileRepository = ProjectFileRepository(database.projectFileDao())
+    val projectRepository = LocalProjectRepository(database.projectDao(), database.messageDao(), database.projectFileDao())
 
     NavHost(navController = navController, startDestination = "project_list") {
         composable("project_list") {
@@ -49,6 +52,7 @@ fun AppNavigation() {
                     projectId = projectId,
                     messageRepository = messageRepository,
                     projectRepository = projectRepository,
+                    fileRepository = fileRepository,
                     providers = providers
                 )
             )

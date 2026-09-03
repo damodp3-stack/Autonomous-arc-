@@ -13,7 +13,8 @@ interface ProjectRepository {
 
 class LocalProjectRepository(
     private val projectDao: ProjectDao,
-    private val messageDao: MessageDao
+    private val messageDao: MessageDao,
+    private val projectFileDao: ProjectFileDao
 ) : ProjectRepository {
 
     override fun getAllProjects(): Flow<List<ProjectEntity>> = projectDao.getAllProjects()
@@ -35,6 +36,7 @@ class LocalProjectRepository(
     }
 
     override suspend fun deleteProject(projectId: String) {
+        projectFileDao.clearFilesForProject(projectId)
         messageDao.clearMessages(projectId)
         projectDao.deleteProject(projectId)
     }

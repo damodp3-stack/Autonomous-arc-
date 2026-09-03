@@ -3,6 +3,10 @@
 The historical development record for Autonomous Arc.
 
 ## [Phase 1 - Projects] - Current
+- **Added:** Files & Code Workspace Foundation (Room-based project files, code editor, side drawer file explorer).
+- **Added:** `ProjectFileEntity` and `ProjectFileDao` for isolated project file persistence.
+- **Added:** UI for basic file operations: Create, Read, Update, Delete.
+- **Added:** `ProjectContext` to prepare Gemini AI integration for file awareness.
 - **Added:** Real Gemini AI Provider integration (`GeminiAIProvider`) using Retrofit and Moshi.
 - **Added:** AI Provider selection dropdown in the Workspace TopAppBar (Mock vs. Gemini).
 - **Added:** Secure API Key management via `BuildConfig` and `secrets-gradle-plugin`.

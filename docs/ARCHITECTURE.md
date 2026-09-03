@@ -3,10 +3,11 @@
 ## Current Architecture
 What actually exists in the repository now:
 - Android/Kotlin/Jetpack Compose client.
-- Room Database (Local Persistence) with `ProjectEntity` and `MessageEntity`.
-- Repositories (`LocalProjectRepository`, `MessageRepository`).
+- Room Database (Local Persistence) with `ProjectEntity`, `MessageEntity`, and `ProjectFileEntity`.
+- Repositories (`LocalProjectRepository`, `MessageRepository`, `ProjectFileRepository`).
 - ViewModels managing state (`ProjectListViewModel`, `WorkspaceViewModel`).
-- Interface-driven AI abstraction (`AIProvider`) with concrete implementations:
+- File & Code Workspace UI with side-drawer file explorer and basic editor.
+- Interface-driven AI abstraction (`AIProvider` and `ProjectContext`) with concrete implementations:
   - `MockAIProvider` (Offline/Testing)
   - `GeminiAIProvider` (Direct REST API integration using Retrofit and Moshi)
 - Navigation managed via `androidx.navigation.compose`.

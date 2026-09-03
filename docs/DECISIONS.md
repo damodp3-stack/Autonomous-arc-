@@ -12,6 +12,7 @@ Maintain important architectural and product decisions.
 - **AI code changes should eventually use review/approval:** Emphasized in the roadmap for transparent automation.
 - **Important changes should be reversible/versioned:** Reflected in the planned architectural phases.
 - **Gemini API Integration:** Selected Direct REST (Option B) with Moshi for the prototyping phase to avoid Firebase backend setup overhead, isolating the logic in `GeminiAIProvider` and exposing a UI toggle to safely fall back to `MockAIProvider`.
+- **Files & Code Editor:** Implemented as a drawer for mobile friendliness rather than cramming side-by-side files and editors. Project isolation is maintained firmly at the Room Database level via strict `projectId` foreign key/queries.
 
 ## Future Decisions
 

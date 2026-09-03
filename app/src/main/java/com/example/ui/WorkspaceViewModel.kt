@@ -15,10 +15,15 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+import com.example.ai.ProjectContext
+import com.example.data.ProjectFileEntity
+import com.example.data.ProjectFileRepository
+
 class WorkspaceViewModel(
     private val projectId: String,
     private val messageRepository: MessageRepository,
     private val projectRepository: ProjectRepository,
+    private val fileRepository: ProjectFileRepository,
     private val providers: Map<String, AIProvider>
 ) : ViewModel() {
 
@@ -40,6 +45,19 @@ class WorkspaceViewModel(
             initialValue = emptyList()
         )
 
+    val files: StateFlow<List<ProjectFileEntity>> = fileRepository.getFilesForProject(projectId)
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
+
+    private val _selectedFile = MutableStateFlow<ProjectFileEntity?>(null)
+    val selectedFile: StateFlow<ProjectFileEntity?> = _selectedFile.asStateFlow()
+
+    private val _editorContent = MutableStateFlow("")
+    val editorContent: StateFlow<String> = _editorContent.asStateFlow()
+
     private val _projectName = MutableStateFlow("Loading...")
     val projectName: StateFlow<String> = _projectName.asStateFlow()
 
@@ -53,6 +71,41 @@ class WorkspaceViewModel(
                     _projectName.value = project.name
                 }
             }
+        }
+    }
+
+    fun selectFile(file: ProjectFileEntity) {
+        _selectedFile.value = file
+        _editorContent.value = file.content
+    }
+
+    fun updateEditorContent(content: String) {
+        _editorContent.value = content
+    }
+
+    fun saveCurrentFile() {
+        val currentFile = _selectedFile.value ?: return
+        viewModelScope.launch {
+            fileRepository.updateFileContent(currentFile.id, _editorContent.value)
+            // Reload the file to get the updated entity
+            _selectedFile.value = fileRepository.getFile(currentFile.id)
+        }
+    }
+
+    fun createFile(path: String) {
+        viewModelScope.launch {
+            val newFile = fileRepository.createFile(projectId, path)
+            selectFile(newFile)
+        }
+    }
+
+    fun deleteFile(fileId: String) {
+        viewModelScope.launch {
+            if (_selectedFile.value?.id == fileId) {
+                _selectedFile.value = null
+                _editorContent.value = ""
+            }
+            fileRepository.deleteFile(fileId)
         }
     }
 
@@ -73,7 +126,14 @@ class WorkspaceViewModel(
             _isBuilding.value = true
             
             val aiProvider = providers[_selectedProvider.value] ?: providers.values.first()
-            val aiResponse = aiProvider.generateResponse(text, messages.value)
+            
+            val projectContext = ProjectContext(
+                projectName = _projectName.value,
+                files = files.value,
+                currentOpenFile = _selectedFile.value
+            )
+            
+            val aiResponse = aiProvider.generateResponse(text, messages.value, projectContext)
             
             // 3. Save AI response
             messageRepository.insert(MessageEntity(
@@ -90,12 +150,13 @@ class WorkspaceViewModelFactory(
     private val projectId: String,
     private val messageRepository: MessageRepository,
     private val projectRepository: ProjectRepository,
+    private val fileRepository: ProjectFileRepository,
     private val providers: Map<String, AIProvider>
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(WorkspaceViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            return WorkspaceViewModel(projectId, messageRepository, projectRepository, providers) as T
+            return WorkspaceViewModel(projectId, messageRepository, projectRepository, fileRepository, providers) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }
