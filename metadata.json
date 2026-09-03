@@ -1,0 +1,6 @@
+{
+  "name": "AI Coder",
+  "description": "Mobile-first AI coding assistant.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
