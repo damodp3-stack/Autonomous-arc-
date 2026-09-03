@@ -12,14 +12,15 @@ Phase 1 — Projects (Project foundation established).
 - Persistent local storage via Room (ProjectEntity, MessageEntity).
 - Prompt input box and Send button.
 - Chat-style response area with message history.
-- AIProvider abstraction (MockAIProvider currently).
+- AIProvider abstraction (`MockAIProvider`, `GeminiAIProvider`).
 - High Density design theme applied.
+- Provider selection in Workspace UI (Mock vs. Gemini).
+- Real Gemini API integration (via Direct REST API with Moshi).
 
 **Partially Completed**
-- AI Integration (Mock provider exists, but real LLM connection pending).
+- AI Integration (Gemini provider exists and works, but full file workspace is pending for it to manipulate).
 
 **Pending**
-- Real AI API provider integration.
 - Files & Code Workspace (reading/writing actual project files).
 - Media/Ideas Vault.
 - GitHub Integration.
@@ -31,12 +32,13 @@ Phase 1 — Projects (Project foundation established).
 - None verified at this time.
 
 **Known Limitations**
-- The AI Provider currently returns mock responses instead of generating actual code.
+- The AI Provider (Gemini) responds conceptually because the file explorer/code editor workspace isn't fully integrated yet.
 - Workspace lacks an actual file explorer or code editor view.
 
 **Verified**
 - Project creation and navigation (Verified).
 - Database persistence for messages and projects (Verified).
+- Gemini AI API integration via REST and Moshi (Verified compilation and mock switching).
 
 **Current Architecture**
 - Android app using Kotlin, Jetpack Compose.
@@ -44,13 +46,13 @@ Phase 1 — Projects (Project foundation established).
 - Repository pattern (`LocalProjectRepository`, `MessageRepository`).
 - Navigation Compose for routing (`AppNavigation`).
 - MVVM Architecture (`ProjectListViewModel`, `WorkspaceViewModel`).
-- Interface-driven AI abstraction (`AIProvider`).
+- Interface-driven AI abstraction (`AIProvider` with `GeminiAIProvider` and `MockAIProvider`).
 
 **Immediate Next Step**
-- Implement real AI API provider (e.g., Gemini API) integration using the `AIProvider` interface.
+- Introduce a Files & Code Workspace to view and edit project files.
 
 **After Next Step**
-- Introduce a Files & Code Workspace to view and edit project files.
+- Expand Gemini provider to perform full file analysis and code modification proposals.
 
 **Final Goal**
 The intended final Autonomous Arc product: A fully autonomous AI coding assistant with real-time file editing, GitHub sync, and cloud builds on mobile.

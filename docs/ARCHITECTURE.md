@@ -6,7 +6,9 @@ What actually exists in the repository now:
 - Room Database (Local Persistence) with `ProjectEntity` and `MessageEntity`.
 - Repositories (`LocalProjectRepository`, `MessageRepository`).
 - ViewModels managing state (`ProjectListViewModel`, `WorkspaceViewModel`).
-- `MockAIProvider` implementing the `AIProvider` interface.
+- Interface-driven AI abstraction (`AIProvider`) with concrete implementations:
+  - `MockAIProvider` (Offline/Testing)
+  - `GeminiAIProvider` (Direct REST API integration using Retrofit and Moshi)
 - Navigation managed via `androidx.navigation.compose`.
 
 ## Target Architecture

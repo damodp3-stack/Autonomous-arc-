@@ -3,6 +3,9 @@
 The historical development record for Autonomous Arc.
 
 ## [Phase 1 - Projects] - Current
+- **Added:** Real Gemini AI Provider integration (`GeminiAIProvider`) using Retrofit and Moshi.
+- **Added:** AI Provider selection dropdown in the Workspace TopAppBar (Mock vs. Gemini).
+- **Added:** Secure API Key management via `BuildConfig` and `secrets-gradle-plugin`.
 - **Added:** `docs/` directory for permanent project documentation.
 - **Added:** Local persistence via Room Database (`AppDatabase`, `ProjectEntity`, `MessageEntity`).
 - **Added:** Project List view allowing users to create, view, and delete isolated projects.

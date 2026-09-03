@@ -110,6 +110,31 @@ fun WorkspaceScreen(viewModel: WorkspaceViewModel, onBack: () -> Unit) {
                         }
                     }
                 },
+                actions = {
+                    val availableProviders = viewModel.availableProviders
+                    val selectedProvider by viewModel.selectedProvider.collectAsStateWithLifecycle()
+                    var providerMenuExpanded by remember { mutableStateOf(false) }
+
+                    Box {
+                        TextButton(onClick = { providerMenuExpanded = true }) {
+                            Text(selectedProvider)
+                        }
+                        DropdownMenu(
+                            expanded = providerMenuExpanded,
+                            onDismissRequest = { providerMenuExpanded = false }
+                        ) {
+                            availableProviders.forEach { provider ->
+                                DropdownMenuItem(
+                                    text = { Text(provider) },
+                                    onClick = {
+                                        viewModel.setProvider(provider)
+                                        providerMenuExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
                 )
@@ -199,11 +224,12 @@ fun WorkspaceScreen(viewModel: WorkspaceViewModel, onBack: () -> Unit) {
                                 
                                 Button(
                                     onClick = {
-                                        if (promptText.isNotBlank()) {
+                                        if (promptText.isNotBlank() && !isBuilding) {
                                             viewModel.sendMessage(promptText)
                                             promptText = ""
                                         }
                                     },
+                                    enabled = !isBuilding,
                                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                                     modifier = Modifier.testTag("send_button"),
                                     contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp)

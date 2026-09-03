@@ -19,8 +19,19 @@ class WorkspaceViewModel(
     private val projectId: String,
     private val messageRepository: MessageRepository,
     private val projectRepository: ProjectRepository,
-    private val aiProvider: AIProvider
+    private val providers: Map<String, AIProvider>
 ) : ViewModel() {
+
+    val availableProviders = providers.keys.toList()
+
+    private val _selectedProvider = MutableStateFlow(availableProviders.firstOrNull() ?: "Mock")
+    val selectedProvider: StateFlow<String> = _selectedProvider.asStateFlow()
+
+    fun setProvider(providerName: String) {
+        if (providers.containsKey(providerName)) {
+            _selectedProvider.value = providerName
+        }
+    }
 
     val messages: StateFlow<List<MessageEntity>> = messageRepository.getMessagesForProject(projectId)
         .stateIn(
@@ -61,6 +72,7 @@ class WorkspaceViewModel(
             // 2. Simulate AI processing
             _isBuilding.value = true
             
+            val aiProvider = providers[_selectedProvider.value] ?: providers.values.first()
             val aiResponse = aiProvider.generateResponse(text, messages.value)
             
             // 3. Save AI response
@@ -78,12 +90,12 @@ class WorkspaceViewModelFactory(
     private val projectId: String,
     private val messageRepository: MessageRepository,
     private val projectRepository: ProjectRepository,
-    private val aiProvider: AIProvider
+    private val providers: Map<String, AIProvider>
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(WorkspaceViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            return WorkspaceViewModel(projectId, messageRepository, projectRepository, aiProvider) as T
+            return WorkspaceViewModel(projectId, messageRepository, projectRepository, providers) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }
