@@ -16,6 +16,12 @@ Maintain important architectural and product decisions.
 
 ## Future Decisions
 
+**Decision:** AI-generated code changes are represented as proposals and require a later explicit approval/apply stage rather than directly modifying project files.
+**Date:** 2026-09-03
+**Reason:** Ensures user control over modifications and provides a safe abstraction before any destructive actions are performed.
+**Alternatives considered:** Direct automatic file modification (too risky, harder to revert).
+**Impact:** Required introducing the `CodeChangeProposal` model and a distinct UI flow before applying changes.
+
 *(Template for future decisions)*
 
 **Decision:** [What was decided]

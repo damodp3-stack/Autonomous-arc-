@@ -42,6 +42,10 @@ fun WorkspaceScreen(viewModel: WorkspaceViewModel, onBack: () -> Unit) {
     val files by viewModel.files.collectAsStateWithLifecycle()
     val selectedFile by viewModel.selectedFile.collectAsStateWithLifecycle()
     val editorContent by viewModel.editorContent.collectAsStateWithLifecycle()
+    
+    val proposalState by viewModel.proposalState.collectAsStateWithLifecycle()
+    val currentProposal by viewModel.currentProposal.collectAsStateWithLifecycle()
+    val proposalError by viewModel.proposalError.collectAsStateWithLifecycle()
 
     var promptText by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
@@ -226,6 +230,11 @@ fun WorkspaceScreen(viewModel: WorkspaceViewModel, onBack: () -> Unit) {
                             BuildingState()
                         }
                     }
+                    if (proposalState == ProposalState.GENERATING) {
+                        item {
+                            GeneratingState()
+                        }
+                    }
                 }
 
                 // Input Area
@@ -278,25 +287,42 @@ fun WorkspaceScreen(viewModel: WorkspaceViewModel, onBack: () -> Unit) {
                                         }
                                     }
                                     
-                                    Button(
-                                        onClick = {
-                                            if (promptText.isNotBlank() && !isBuilding) {
-                                                viewModel.sendMessage(promptText)
-                                                promptText = ""
-                                            }
-                                        },
-                                        enabled = !isBuilding,
-                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                                        modifier = Modifier.testTag("send_button"),
-                                        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp)
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text("BUILD", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Icon(
-                                            imageVector = Icons.AutoMirrored.Filled.Send,
-                                            contentDescription = "Build",
-                                            modifier = Modifier.size(16.dp)
-                                        )
+                                        TextButton(
+                                            onClick = {
+                                                if (promptText.isNotBlank() && !isBuilding && proposalState != ProposalState.GENERATING) {
+                                                    viewModel.proposeChange(promptText)
+                                                    promptText = ""
+                                                }
+                                            },
+                                            enabled = !isBuilding && proposalState != ProposalState.GENERATING
+                                        ) {
+                                            Text("PROPOSE", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
+                                        }
+
+                                        Button(
+                                            onClick = {
+                                                if (promptText.isNotBlank() && !isBuilding && proposalState != ProposalState.GENERATING) {
+                                                    viewModel.sendMessage(promptText)
+                                                    promptText = ""
+                                                }
+                                            },
+                                            enabled = !isBuilding && proposalState != ProposalState.GENERATING,
+                                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                                            modifier = Modifier.testTag("send_button"),
+                                            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp)
+                                        ) {
+                                            Text("BUILD", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Icon(
+                                                imageVector = Icons.AutoMirrored.Filled.Send,
+                                                contentDescription = "Build",
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -352,6 +378,61 @@ fun WorkspaceScreen(viewModel: WorkspaceViewModel, onBack: () -> Unit) {
             dismissButton = {
                 TextButton(onClick = { showNewFileDialog = false }) {
                     Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (proposalState == ProposalState.READY && currentProposal != null) {
+        AlertDialog(
+            onDismissRequest = { viewModel.clearProposal() },
+            title = { Text("AI Proposal: ${currentProposal!!.summary}") },
+            text = {
+                LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                    item {
+                        Text(currentProposal!!.explanation, style = MaterialTheme.typography.bodyMedium)
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+                    items(currentProposal!!.changes) { change ->
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                        ) {
+                            Column(modifier = Modifier.padding(8.dp)) {
+                                Text("${change.operation}: ${change.filePath}", fontWeight = FontWeight.Bold)
+                                Spacer(modifier = Modifier.height(4.dp))
+                                if (change.operation != com.example.ai.FileOperation.CREATE) {
+                                    Text("Old:", style = MaterialTheme.typography.labelSmall)
+                                    Text(change.originalContent.take(100) + if (change.originalContent.length > 100) "..." else "", style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace))
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                }
+                                if (change.operation != com.example.ai.FileOperation.DELETE) {
+                                    Text("New:", style = MaterialTheme.typography.labelSmall)
+                                    Text(change.proposedContent.take(100) + if (change.proposedContent.length > 100) "..." else "", style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace))
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { viewModel.clearProposal() }) {
+                    Text("Close")
+                }
+            }
+        )
+    }
+
+    if (proposalState == ProposalState.ERROR && proposalError != null) {
+        AlertDialog(
+            onDismissRequest = { viewModel.clearProposal() },
+            title = { Text("Error") },
+            text = { Text(proposalError ?: "Unknown error.") },
+            confirmButton = {
+                TextButton(onClick = { viewModel.clearProposal() }) {
+                    Text("OK")
                 }
             }
         )
@@ -532,6 +613,37 @@ fun BuildingState() {
                 Spacer(modifier = Modifier.width(12.dp))
                 Text(
                     text = "Building...",
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun GeneratingState() {
+    Box(
+        modifier = Modifier.fillMaxWidth(),
+        contentAlignment = Alignment.CenterStart
+    ) {
+        Surface(
+            shape = RoundedCornerShape(20.dp, 20.dp, 20.dp, 4.dp),
+            color = MaterialTheme.colorScheme.secondaryContainer,
+            tonalElevation = 1.dp
+        ) {
+            Row(
+                modifier = Modifier.padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(16.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    text = "Proposing changes...",
                     color = MaterialTheme.colorScheme.onSecondaryContainer,
                     style = MaterialTheme.typography.bodyMedium
                 )

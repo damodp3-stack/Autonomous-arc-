@@ -7,10 +7,11 @@
 - [x] Completed: Multiple isolated projects, Room DB persistence, Project workspaces.
 
 **Phase 2 — Files & Code Workspace**
-- [ ] Pending: Code editor, file navigation, file management within projects.
+- [x] Completed: Code editor, file navigation, file management within projects.
 
 **Phase 3 — AI Coding Agent**
-- [~] Partially completed: AI Provider abstraction created. Mock responses implemented. Pending real AI capabilities to parse and modify code.
+- [~] Partially completed: AI Provider abstraction created. Mock responses implemented. AI can now generate structured `CodeChangeProposal` items based on user requests and file context.
+- [ ] Pending: Diff Viewer, user approval, and Apply Changes execution.
 
 **Phase 4 — Media & Ideas**
 - [ ] Pending: Ideas vault, AI-generated images/videos/media.

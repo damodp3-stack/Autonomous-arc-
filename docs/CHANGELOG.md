@@ -3,6 +3,11 @@
 The historical development record for Autonomous Arc.
 
 ## [Phase 1 - Projects] - Current
+- **Added:** AI Code Change Proposal Engine.
+- **Added:** `CodeChangeProposal` and `FileChange` models for structured AI output.
+- **Added:** `proposeCodeChanges` functionality to `AIProvider` abstractions.
+- **Added:** Basic AI Proposal Viewer dialog in the Workspace UI.
+- **Added:** Path validation and traversal rejection for AI-generated code proposals.
 - **Added:** Files & Code Workspace Foundation (Room-based project files, code editor, side drawer file explorer).
 - **Added:** `ProjectFileEntity` and `ProjectFileDao` for isolated project file persistence.
 - **Added:** UI for basic file operations: Create, Read, Update, Delete.

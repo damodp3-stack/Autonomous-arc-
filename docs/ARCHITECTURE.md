@@ -22,9 +22,13 @@ UI / Workspace
 ↓
 Application State
 ↓
-AI Orchestration (Planned)
+ProjectContext
 ↓
-AI Provider Abstraction
+AIProvider
+↓
+CodeChangeProposal
+↓
+Proposal Viewer
 ↓
 Multiple AI Providers (Planned)
 

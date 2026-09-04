@@ -18,12 +18,13 @@ Phase 1 — Projects (Project foundation established).
 - Real Gemini API integration (via Direct REST API with Moshi).
 - Files & Code Workspace Foundation (Room-based project files, code editor, side drawer file explorer).
 - Project Context AI foundation (current open file context passed to Gemini).
+- AI Code Change Proposal Engine completed. AI can generate structured file-change proposals, but does NOT apply changes yet.
 
 **Partially Completed**
-- AI Integration (Gemini provider can read current file context, but full autonomous file manipulation is pending).
+- Autonomous file modification (AI can propose, but cannot automatically execute code changes directly).
 
 **Pending**
-- Autonomous file modification (AI writing/modifying code files).
+- Apply Changes logic.
 - Media/Ideas Vault.
 - GitHub Integration.
 - Cloud storage/Firebase.
@@ -52,10 +53,10 @@ Phase 1 — Projects (Project foundation established).
 - Interface-driven AI abstraction (`AIProvider` with `GeminiAIProvider` and `MockAIProvider`).
 
 **Immediate Next Step**
-- Enable AI to propose code changes and modifications.
+- Build a Diff Viewer to let users approve/reject AI code proposals.
 
 **After Next Step**
-- Build a Diff Viewer to let users approve/reject AI code proposals.
+- Build the "Apply Changes" logic to safely write changes to the project files.
 
 **Final Goal**
 The intended final Autonomous Arc product: A fully autonomous AI coding assistant with real-time file editing, GitHub sync, and cloud builds on mobile.

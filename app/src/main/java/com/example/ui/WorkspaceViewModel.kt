@@ -19,6 +19,10 @@ import com.example.ai.ProjectContext
 import com.example.data.ProjectFileEntity
 import com.example.data.ProjectFileRepository
 
+enum class ProposalState {
+    IDLE, GENERATING, READY, ERROR
+}
+
 class WorkspaceViewModel(
     private val projectId: String,
     private val messageRepository: MessageRepository,
@@ -31,6 +35,15 @@ class WorkspaceViewModel(
 
     private val _selectedProvider = MutableStateFlow(availableProviders.firstOrNull() ?: "Mock")
     val selectedProvider: StateFlow<String> = _selectedProvider.asStateFlow()
+
+    private val _proposalState = MutableStateFlow(ProposalState.IDLE)
+    val proposalState: StateFlow<ProposalState> = _proposalState.asStateFlow()
+
+    private val _currentProposal = MutableStateFlow<com.example.ai.CodeChangeProposal?>(null)
+    val currentProposal: StateFlow<com.example.ai.CodeChangeProposal?> = _currentProposal.asStateFlow()
+
+    private val _proposalError = MutableStateFlow<String?>(null)
+    val proposalError: StateFlow<String?> = _proposalError.asStateFlow()
 
     fun setProvider(providerName: String) {
         if (providers.containsKey(providerName)) {
@@ -143,6 +156,36 @@ class WorkspaceViewModel(
             ))
             _isBuilding.value = false
         }
+    }
+
+    fun proposeChange(request: String) {
+        if (request.isBlank()) return
+        viewModelScope.launch {
+            _proposalState.value = ProposalState.GENERATING
+            _currentProposal.value = null
+            _proposalError.value = null
+
+            try {
+                val aiProvider = providers[_selectedProvider.value] ?: providers.values.first()
+                val projectContext = ProjectContext(
+                    projectName = _projectName.value,
+                    files = files.value,
+                    currentOpenFile = _selectedFile.value
+                )
+                val proposal = aiProvider.proposeCodeChanges(request, projectContext)
+                _currentProposal.value = proposal
+                _proposalState.value = ProposalState.READY
+            } catch (e: Exception) {
+                _proposalError.value = e.message ?: "An unknown error occurred"
+                _proposalState.value = ProposalState.ERROR
+            }
+        }
+    }
+
+    fun clearProposal() {
+        _proposalState.value = ProposalState.IDLE
+        _currentProposal.value = null
+        _proposalError.value = null
     }
 }
 
