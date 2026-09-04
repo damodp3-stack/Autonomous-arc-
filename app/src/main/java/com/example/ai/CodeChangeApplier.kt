@@ -11,64 +11,74 @@ class CodeChangeApplier(
             return ApplyResult.Success(emptyList())
         }
 
-        // 1. Path Security Validation
+        // 1. Path Security Validation & Duplicate Check
+        val normalizedChanges = mutableListOf<FileChange>()
+        val seenPaths = mutableSetOf<String>()
+        
         for (change in proposal.changes) {
-            val validPath = isValidPath(change.filePath)
-            if (!validPath) {
+            val normalizedPath = normalizePath(change.filePath)
+            if (normalizedPath == null) {
                 return ApplyResult.ValidationError("Security Error: Invalid or traversal path detected - ${change.filePath}")
             }
+            if (!seenPaths.add(normalizedPath)) {
+                return ApplyResult.ValidationError("Duplicate path detected in proposal: $normalizedPath")
+            }
+            // Replace path with normalized path for remaining execution
+            normalizedChanges.add(change.copy(filePath = normalizedPath))
         }
 
-        // 2. Create Snapshot
-        // We will keep a map of filePath to its original ProjectFileEntity.
-        // For new files (CREATE), the entity will be null in the map initially.
+        // 2. Create Snapshot & Validate state preconditions (BEFORE applying anything)
         val snapshot = mutableMapOf<String, ProjectFileEntity?>()
-        for (change in proposal.changes) {
-            val path = normalizePath(change.filePath)
+        for (change in normalizedChanges) {
+            val path = change.filePath
             val existingFile = repository.getFileByPath(projectId, path)
             snapshot[path] = existingFile
+
+            // Validate based on operation
+            when (change.operation) {
+                FileOperation.CREATE -> {
+                    if (existingFile != null) {
+                        return ApplyResult.Conflict("File already exists", path)
+                    }
+                }
+                FileOperation.MODIFY -> {
+                    if (existingFile == null) {
+                        return ApplyResult.ValidationError("File not found for modification: $path")
+                    }
+                    if (existingFile.content != change.originalContent) {
+                        return ApplyResult.Conflict("Content mismatch: File was modified after proposal.", path)
+                    }
+                }
+                FileOperation.DELETE -> {
+                    if (existingFile == null) {
+                        return ApplyResult.ValidationError("File not found for deletion: $path")
+                    }
+                    if (change.originalContent.isNotEmpty() && existingFile.content != change.originalContent) {
+                        return ApplyResult.Conflict("Content mismatch: File was modified after proposal.", path)
+                    }
+                }
+            }
         }
 
         val appliedChanges = mutableListOf<FileChange>()
         val createdFileIds = mutableListOf<String>() // to track newly created files for rollback
 
         // 3. Apply Changes
-        for (change in proposal.changes) {
-            val path = normalizePath(change.filePath)
+        for (change in normalizedChanges) {
+            val path = change.filePath
             val existingFile = snapshot[path]
 
             try {
                 when (change.operation) {
                     FileOperation.CREATE -> {
-                        if (existingFile != null) {
-                            rollback(createdFileIds, snapshot)
-                            return ApplyResult.Conflict("File already exists", path)
-                        }
                         val newFile = repository.createFile(projectId, path, change.proposedContent)
                         createdFileIds.add(newFile.id)
                     }
                     FileOperation.MODIFY -> {
-                        if (existingFile == null) {
-                            rollback(createdFileIds, snapshot)
-                            return ApplyResult.ValidationError("File not found for modification: $path")
-                        }
-                        if (existingFile.content != change.originalContent) {
-                            rollback(createdFileIds, snapshot)
-                            return ApplyResult.Conflict("Content mismatch: File was modified after proposal.", path)
-                        }
-                        repository.updateFileContent(existingFile.id, change.proposedContent)
+                        repository.updateFileContent(existingFile!!.id, change.proposedContent)
                     }
                     FileOperation.DELETE -> {
-                        if (existingFile == null) {
-                            rollback(createdFileIds, snapshot)
-                            return ApplyResult.ValidationError("File not found for deletion: $path")
-                        }
-                        // For delete, verify content if provided
-                        if (change.originalContent.isNotEmpty() && existingFile.content != change.originalContent) {
-                            rollback(createdFileIds, snapshot)
-                            return ApplyResult.Conflict("Content mismatch: File was modified after proposal.", path)
-                        }
-                        repository.deleteFile(existingFile.id)
+                        repository.deleteFile(existingFile!!.id)
                     }
                 }
                 appliedChanges.add(change)
@@ -110,16 +120,42 @@ class CodeChangeApplier(
         }
     }
 
-    private fun isValidPath(path: String): Boolean {
-        if (path.isBlank()) return false
-        val normalized = normalizePath(path)
-        if (normalized.startsWith("/") || normalized.contains("../") || normalized.contains("..\\")) {
-            return false
-        }
-        return true
-    }
+    /**
+     * Centralized path normalization and validation.
+     * Returns null if the path is invalid, absolute, UNC, contains null bytes, 
+     * or traverses outside the project directory.
+     */
+    fun normalizePath(path: String): String? {
+        if (path.isBlank()) return null
+        if (path.contains("\u0000")) return null
 
-    private fun normalizePath(path: String): String {
-        return path.replace("\\", "/").trim()
+        val unixPath = path.replace("\\", "/")
+        
+        // Reject absolute paths and UNC
+        if (unixPath.startsWith("/")) return null
+        if (unixPath.contains("://")) return null // just in case
+        if (Regex("^[a-zA-Z]:/").containsMatchIn(unixPath)) return null // Windows absolute e.g. C:/
+        if (Regex("^[a-zA-Z]:\\\\").containsMatchIn(unixPath)) return null // Windows absolute e.g. C:\
+
+        val segments = unixPath.split("/")
+        val normalizedSegments = mutableListOf<String>()
+
+        for (segment in segments) {
+            if (segment.isEmpty() || segment == ".") {
+                continue
+            }
+            if (segment == "..") {
+                if (normalizedSegments.isEmpty()) {
+                    return null // Traversal escape
+                }
+                normalizedSegments.removeAt(normalizedSegments.size - 1)
+            } else {
+                normalizedSegments.add(segment)
+            }
+        }
+
+        if (normalizedSegments.isEmpty()) return null
+
+        return normalizedSegments.joinToString("/")
     }
 }
