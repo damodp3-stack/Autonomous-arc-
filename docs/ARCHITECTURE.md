@@ -30,7 +30,9 @@ CodeChangeProposal
 ↓
 Proposal Viewer
 ↓
-Multiple AI Providers (Planned)
+CodeChangeApplier
+↓
+ProjectFileRepository (Room DB)
 
 **Project Structure Architecture:**
 Project

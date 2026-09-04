@@ -3,6 +3,11 @@
 The historical development record for Autonomous Arc.
 
 ## [Phase 1 - Projects] - Current
+- **Added:** Safe Code Change Apply Engine (`CodeChangeApplier`).
+- **Added:** Secure snapshot and rollback mechanisms for AI file modifications.
+- **Added:** `ApplyResult` state models and explicit user Apply actions in the Workspace UI.
+- **Added:** In-memory traversal and conflict validation layers preventing destructive AI file overwrites.
+- **Fixed:** Editor close button logic which previously improperly deleted the selected file.
 - **Added:** AI Code Change Proposal Engine.
 - **Added:** `CodeChangeProposal` and `FileChange` models for structured AI output.
 - **Added:** `proposeCodeChanges` functionality to `AIProvider` abstractions.

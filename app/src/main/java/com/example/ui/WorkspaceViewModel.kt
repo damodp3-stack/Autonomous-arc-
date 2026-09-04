@@ -23,6 +23,10 @@ enum class ProposalState {
     IDLE, GENERATING, READY, ERROR
 }
 
+enum class ApplyState {
+    IDLE, APPLYING, SUCCESS, ERROR
+}
+
 class WorkspaceViewModel(
     private val projectId: String,
     private val messageRepository: MessageRepository,
@@ -31,8 +35,9 @@ class WorkspaceViewModel(
     private val providers: Map<String, AIProvider>
 ) : ViewModel() {
 
-    val availableProviders = providers.keys.toList()
+    private val codeChangeApplier = com.example.ai.CodeChangeApplier(fileRepository)
 
+    val availableProviders = providers.keys.toList()
     private val _selectedProvider = MutableStateFlow(availableProviders.firstOrNull() ?: "Mock")
     val selectedProvider: StateFlow<String> = _selectedProvider.asStateFlow()
 
@@ -44,6 +49,12 @@ class WorkspaceViewModel(
 
     private val _proposalError = MutableStateFlow<String?>(null)
     val proposalError: StateFlow<String?> = _proposalError.asStateFlow()
+
+    private val _applyState = MutableStateFlow(ApplyState.IDLE)
+    val applyState: StateFlow<ApplyState> = _applyState.asStateFlow()
+
+    private val _applyResult = MutableStateFlow<com.example.ai.ApplyResult?>(null)
+    val applyResult: StateFlow<com.example.ai.ApplyResult?> = _applyResult.asStateFlow()
 
     fun setProvider(providerName: String) {
         if (providers.containsKey(providerName)) {
@@ -90,6 +101,11 @@ class WorkspaceViewModel(
     fun selectFile(file: ProjectFileEntity) {
         _selectedFile.value = file
         _editorContent.value = file.content
+    }
+
+    fun closeFile() {
+        _selectedFile.value = null
+        _editorContent.value = ""
     }
 
     fun updateEditorContent(content: String) {
@@ -186,6 +202,40 @@ class WorkspaceViewModel(
         _proposalState.value = ProposalState.IDLE
         _currentProposal.value = null
         _proposalError.value = null
+        _applyState.value = ApplyState.IDLE
+        _applyResult.value = null
+    }
+
+    fun applyProposal() {
+        val proposal = _currentProposal.value ?: return
+        if (_applyState.value == ApplyState.APPLYING) return
+
+        viewModelScope.launch {
+            _applyState.value = ApplyState.APPLYING
+            _applyResult.value = null
+
+            val result = codeChangeApplier.applyProposal(projectId, proposal)
+            _applyResult.value = result
+            
+            if (result is com.example.ai.ApplyResult.Success) {
+                _applyState.value = ApplyState.SUCCESS
+                // Refresh currently selected file if affected
+                val currentFile = _selectedFile.value
+                if (currentFile != null) {
+                    val updatedFile = fileRepository.getFile(currentFile.id)
+                    if (updatedFile != null) {
+                        _editorContent.value = updatedFile.content
+                        _selectedFile.value = updatedFile
+                    } else {
+                        // File was deleted
+                        _selectedFile.value = null
+                        _editorContent.value = ""
+                    }
+                }
+            } else {
+                _applyState.value = ApplyState.ERROR
+            }
+        }
     }
 }
 

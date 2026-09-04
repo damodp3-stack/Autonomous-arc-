@@ -180,7 +180,7 @@ fun WorkspaceScreen(viewModel: WorkspaceViewModel, onBack: () -> Unit) {
                                         Icon(Icons.Default.Save, contentDescription = "Save", modifier = Modifier.size(20.dp))
                                     }
                                     IconButton(
-                                        onClick = { viewModel.deleteFile(selectedFile!!.id) /* acts as close here */ },
+                                        onClick = { viewModel.closeFile() },
                                         modifier = Modifier.size(32.dp)
                                     ) {
                                         Icon(Icons.Default.Close, contentDescription = "Close", modifier = Modifier.size(20.dp))
@@ -383,34 +383,42 @@ fun WorkspaceScreen(viewModel: WorkspaceViewModel, onBack: () -> Unit) {
         )
     }
 
+    val applyState by viewModel.applyState.collectAsStateWithLifecycle()
+    val applyResult by viewModel.applyResult.collectAsStateWithLifecycle()
+
     if (proposalState == ProposalState.READY && currentProposal != null) {
         AlertDialog(
-            onDismissRequest = { viewModel.clearProposal() },
+            onDismissRequest = { if (applyState != ApplyState.APPLYING) viewModel.clearProposal() },
             title = { Text("AI Proposal: ${currentProposal!!.summary}") },
             text = {
-                LazyColumn(modifier = Modifier.fillMaxWidth()) {
-                    item {
-                        Text(currentProposal!!.explanation, style = MaterialTheme.typography.bodyMedium)
-                        Spacer(modifier = Modifier.height(16.dp))
+                Column {
+                    if (applyState == ApplyState.APPLYING) {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp))
                     }
-                    items(currentProposal!!.changes) { change ->
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 8.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-                        ) {
-                            Column(modifier = Modifier.padding(8.dp)) {
-                                Text("${change.operation}: ${change.filePath}", fontWeight = FontWeight.Bold)
-                                Spacer(modifier = Modifier.height(4.dp))
-                                if (change.operation != com.example.ai.FileOperation.CREATE) {
-                                    Text("Old:", style = MaterialTheme.typography.labelSmall)
-                                    Text(change.originalContent.take(100) + if (change.originalContent.length > 100) "..." else "", style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace))
+                    LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                        item {
+                            Text(currentProposal!!.explanation, style = MaterialTheme.typography.bodyMedium)
+                            Spacer(modifier = Modifier.height(16.dp))
+                        }
+                        items(currentProposal!!.changes) { change ->
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 8.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                            ) {
+                                Column(modifier = Modifier.padding(8.dp)) {
+                                    Text("${change.operation}: ${change.filePath}", fontWeight = FontWeight.Bold)
                                     Spacer(modifier = Modifier.height(4.dp))
-                                }
-                                if (change.operation != com.example.ai.FileOperation.DELETE) {
-                                    Text("New:", style = MaterialTheme.typography.labelSmall)
-                                    Text(change.proposedContent.take(100) + if (change.proposedContent.length > 100) "..." else "", style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace))
+                                    if (change.operation != com.example.ai.FileOperation.CREATE) {
+                                        Text("Old:", style = MaterialTheme.typography.labelSmall)
+                                        Text(change.originalContent.take(100) + if (change.originalContent.length > 100) "..." else "", style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace))
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                    }
+                                    if (change.operation != com.example.ai.FileOperation.DELETE) {
+                                        Text("New:", style = MaterialTheme.typography.labelSmall)
+                                        Text(change.proposedContent.take(100) + if (change.proposedContent.length > 100) "..." else "", style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace))
+                                    }
                                 }
                             }
                         }
@@ -418,8 +426,52 @@ fun WorkspaceScreen(viewModel: WorkspaceViewModel, onBack: () -> Unit) {
                 }
             },
             confirmButton = {
+                Button(
+                    onClick = { viewModel.applyProposal() },
+                    enabled = applyState != ApplyState.APPLYING
+                ) {
+                    Text("APPLY CHANGES")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { viewModel.clearProposal() },
+                    enabled = applyState != ApplyState.APPLYING
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (applyState == ApplyState.SUCCESS) {
+        AlertDialog(
+            onDismissRequest = { viewModel.clearProposal() },
+            title = { Text("Success") },
+            text = { Text("Changes applied successfully.") },
+            confirmButton = {
                 TextButton(onClick = { viewModel.clearProposal() }) {
-                    Text("Close")
+                    Text("OK")
+                }
+            }
+        )
+    }
+
+    if (applyState == ApplyState.ERROR && applyResult != null) {
+        val errorMessage = when (val res = applyResult) {
+            is com.example.ai.ApplyResult.ValidationError -> "Validation Error: ${res.message}"
+            is com.example.ai.ApplyResult.Conflict -> "Conflict in ${res.filePath}: ${res.message}"
+            is com.example.ai.ApplyResult.ApplyError -> "Apply Error: ${res.message}\nRollback successful: ${res.rollbackSucceeded}"
+            is com.example.ai.ApplyResult.RollbackError -> "Critical Error during Rollback: ${res.rollbackError}"
+            else -> "Unknown error"
+        }
+        AlertDialog(
+            onDismissRequest = { viewModel.clearProposal() }, // Could allow retry or dismiss
+            title = { Text("Apply Failed") },
+            text = { Text(errorMessage) },
+            confirmButton = {
+                TextButton(onClick = { viewModel.clearProposal() }) {
+                    Text("OK")
                 }
             }
         )

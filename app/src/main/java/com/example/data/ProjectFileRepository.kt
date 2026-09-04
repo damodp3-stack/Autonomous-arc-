@@ -36,6 +36,10 @@ class ProjectFileRepository(private val fileDao: ProjectFileDao) {
         return newFile
     }
 
+    suspend fun restoreFile(file: ProjectFileEntity) {
+        fileDao.insertFile(file)
+    }
+
     suspend fun updateFileContent(fileId: String, newContent: String) {
         val file = fileDao.getFile(fileId)
         if (file != null) {

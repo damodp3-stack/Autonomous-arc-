@@ -18,13 +18,13 @@ Phase 1 — Projects (Project foundation established).
 - Real Gemini API integration (via Direct REST API with Moshi).
 - Files & Code Workspace Foundation (Room-based project files, code editor, side drawer file explorer).
 - Project Context AI foundation (current open file context passed to Gemini).
-- AI Code Change Proposal Engine completed. AI can generate structured file-change proposals, but does NOT apply changes yet.
+- AI Code Change Proposal Engine completed. AI can generate structured file-change proposals.
+- **Safe Code Change Apply Engine completed.** AI proposals can be validated, snapshotted, applied, and rolled back safely via Room DB.
 
 **Partially Completed**
-- Autonomous file modification (AI can propose, but cannot automatically execute code changes directly).
+- Autonomous file modification (AI can propose and safely apply code changes to the database, but true filesystem execution/builds are pending).
 
 **Pending**
-- Apply Changes logic.
 - Media/Ideas Vault.
 - GitHub Integration.
 - Cloud storage/Firebase.
@@ -36,13 +36,14 @@ Phase 1 — Projects (Project foundation established).
 
 **Known Limitations**
 - Code editor is a foundational version; it allows reading/writing text but lacks full IDE features like syntax highlighting.
-- AI Provider currently receives file context but cannot execute code changes directly.
+- AI Provider currently applies changes to Room local DB, but real filesystem execution requires Phase 7.
 
 **Verified**
 - Project creation and navigation (Verified).
 - Database persistence for messages, projects, and files (Verified).
 - Gemini AI API integration via REST and Moshi (Verified compilation and mock switching).
 - File operations: create, edit, save, delete, rename (Verified).
+- Apply Engine Validation, Conflict Detection, Snapshot, and Rollback (Verified).
 
 **Current Architecture**
 - Android app using Kotlin, Jetpack Compose.
@@ -51,12 +52,13 @@ Phase 1 — Projects (Project foundation established).
 - Navigation Compose for routing (`AppNavigation`).
 - MVVM Architecture (`ProjectListViewModel`, `WorkspaceViewModel`).
 - Interface-driven AI abstraction (`AIProvider` with `GeminiAIProvider` and `MockAIProvider`).
+- Safe code execution layer (`CodeChangeApplier`).
 
 **Immediate Next Step**
-- Build a Diff Viewer to let users approve/reject AI code proposals.
+- Build a Diff Viewer to let users approve/reject AI code proposals visually.
 
 **After Next Step**
-- Build the "Apply Changes" logic to safely write changes to the project files.
+- Begin GitHub and Build capabilities.
 
 **Final Goal**
 The intended final Autonomous Arc product: A fully autonomous AI coding assistant with real-time file editing, GitHub sync, and cloud builds on mobile.

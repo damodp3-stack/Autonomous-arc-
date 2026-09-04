@@ -10,8 +10,9 @@
 - [x] Completed: Code editor, file navigation, file management within projects.
 
 **Phase 3 — AI Coding Agent**
-- [~] Partially completed: AI Provider abstraction created. Mock responses implemented. AI can now generate structured `CodeChangeProposal` items based on user requests and file context.
-- [ ] Pending: Diff Viewer, user approval, and Apply Changes execution.
+- [x] Completed: AI Provider abstraction created. Mock responses implemented. AI can now generate structured `CodeChangeProposal` items based on user requests and file context.
+- [x] Completed: Safe Code Change Apply Engine. AI proposals can be correctly applied to the Room-based project files with full rollback and validation.
+- [ ] Pending: Diff Viewer for more granular approval before applying.
 
 **Phase 4 — Media & Ideas**
 - [ ] Pending: Ideas vault, AI-generated images/videos/media.
