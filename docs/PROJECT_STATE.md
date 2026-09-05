@@ -20,6 +20,7 @@ Phase 1 — Projects (Project foundation established).
 - Project Context AI foundation (current open file context passed to Gemini).
 - AI Code Change Proposal Engine completed. AI can generate structured file-change proposals.
 - **Safe Code Change Apply Engine completed.** AI proposals can be validated, snapshotted, applied, and rolled back safely via Room DB.
+- **Diff Viewer & Human Approval Workflow completed.** Dedicated UI to review proposals, reject, or explicitly approve and apply changes.
 
 **Partially Completed**
 - Autonomous file modification (AI can propose and safely apply code changes to the database, but true filesystem execution/builds are pending).
@@ -55,7 +56,7 @@ Phase 1 — Projects (Project foundation established).
 - Safe code execution layer (`CodeChangeApplier`).
 
 **Immediate Next Step**
-- Build a Diff Viewer to let users approve/reject AI code proposals visually.
+- Implement True Filesystem Sync (Phase 4). Currently files exist in Room DB; they need to be written to a real file system or in-memory file system for compilation.
 
 **After Next Step**
 - Begin GitHub and Build capabilities.

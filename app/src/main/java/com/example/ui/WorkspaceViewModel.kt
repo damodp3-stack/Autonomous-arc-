@@ -1,21 +1,58 @@
 package com.example.ui
 
+
+
+
 import androidx.lifecycle.ViewModel
+
+
+
 import androidx.lifecycle.ViewModelProvider
+
+
+
 import androidx.lifecycle.viewModelScope
+
+
 import com.example.ai.AIProvider
+
+
 import com.example.data.MessageEntity
+
+
 import com.example.data.MessageRepository
+
+
 import com.example.data.ProjectRepository
+
+
 import kotlinx.coroutines.flow.MutableStateFlow
+
+
 import kotlinx.coroutines.flow.SharingStarted
+
+
 import kotlinx.coroutines.flow.StateFlow
+
+
 import kotlinx.coroutines.flow.asStateFlow
+
+
 import kotlinx.coroutines.flow.stateIn
+
+
 import kotlinx.coroutines.flow.update
+
+
 import kotlinx.coroutines.launch
+
+
 import com.example.ai.ProjectContext
+
+
 import com.example.data.ProjectFileEntity
+
+
 import com.example.data.ProjectFileRepository
 
 enum class ProposalState {

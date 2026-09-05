@@ -1,16 +1,46 @@
 package com.example.ui
 
+
+
+
 import androidx.compose.runtime.Composable
+
+
+
 import androidx.lifecycle.viewmodel.compose.viewModel
+
+
+
 import androidx.navigation.compose.NavHost
+
+
+
 import androidx.navigation.compose.composable
+
+
+
 import androidx.navigation.compose.rememberNavController
+
+
 import com.example.ai.MockAIProvider
+
+
 import com.example.ai.GeminiAIProvider
+
+
 import com.example.data.AppDatabase
+
+
 import com.example.data.LocalProjectRepository
+
+
 import com.example.data.MessageRepository
+
+
+
 import androidx.compose.ui.platform.LocalContext
+
+
 
 import com.example.data.ProjectFileRepository
 

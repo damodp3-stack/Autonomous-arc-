@@ -2,7 +2,11 @@
 
 The historical development record for Autonomous Arc.
 
-## [Phase 1 - Projects] - Current
+## [Phase 3 - AI Coding Agent] - Current
+- **Added:** Diff Viewer and Human Approval Workflow.
+- **Added:** Dedicated `ProposalState` enum to manage proposal lifecycle.
+- **Added:** `Reject` and `Approve & Apply` safeguards.
+- **Updated:** UI integration for reviewing Diff proposals directly in chat.
 - **Added:** Safe Code Change Apply Engine (`CodeChangeApplier`).
 - **Added:** Secure snapshot and rollback mechanisms for AI file modifications.
 - **Added:** `ApplyResult` state models and explicit user Apply actions in the Workspace UI.
