@@ -1,394 +1,15 @@
-package com.example.ui
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.ExperimentalMaterial3Api
+import re
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.Build
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Save
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.data.MessageEntity
-import com.example.data.ProjectFileEntity
-import kotlinx.coroutines.launch
+with open('app/src/main/java/com/example/ui/WorkspaceScreen.kt', 'r') as f:
+    lines = f.readlines()
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun WorkspaceScreen(viewModel: WorkspaceViewModel, onBack: () -> Unit) {
-    val messages by viewModel.messages.collectAsStateWithLifecycle()
-    val projectName by viewModel.projectName.collectAsStateWithLifecycle()
-    val isBuilding by viewModel.isBuilding.collectAsStateWithLifecycle()
-    val files by viewModel.files.collectAsStateWithLifecycle()
-    val selectedFile by viewModel.selectedFile.collectAsStateWithLifecycle()
-    val editorContent by viewModel.editorContent.collectAsStateWithLifecycle()
-    
-    val proposalState by viewModel.proposalState.collectAsStateWithLifecycle()
-    val currentProposal by viewModel.currentProposal.collectAsStateWithLifecycle()
-    val proposalError by viewModel.proposalError.collectAsStateWithLifecycle()
+new_lines = []
+for line in lines:
+    if line.strip() == "val applyResult by viewModel.applyResult.collectAsStateWithLifecycle()":
+        break
+    new_lines.append(line)
 
-    var promptText by remember { mutableStateOf("") }
-    val listState = rememberLazyListState()
-    val coroutineScope = rememberCoroutineScope()
-    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
-
-    var showNewFileDialog by remember { mutableStateOf(false) }
-
-    LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) {
-            listState.animateScrollToItem(messages.size - 1)
-        }
-    }
-
-    ModalNavigationDrawer(
-        drawerState = drawerState,
-        drawerContent = {
-            ModalDrawerSheet(modifier = Modifier.width(300.dp)) {
-                FileExplorerContent(
-                    files = files,
-                    onFileSelected = {
-                        viewModel.selectFile(it)
-                        coroutineScope.launch { drawerState.close() }
-                    },
-                    onNewFileClick = { showNewFileDialog = true },
-                    onDeleteFile = { viewModel.deleteFile(it.id) }
-                )
-            }
-        }
-    ) {
-        Scaffold(
-            topBar = {
-                TopAppBar(
-                    title = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            IconButton(onClick = onBack) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                    contentDescription = "Back",
-                                    tint = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                            IconButton(onClick = { coroutineScope.launch { drawerState.open() } }) {
-                                Icon(
-                                    imageVector = Icons.Default.Menu,
-                                    contentDescription = "Files",
-                                    tint = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Column {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("AI Architect", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
-                                }
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("Project: $projectName", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                            }
-                        }
-                    },
-                    actions = {
-                        val availableProviders = viewModel.availableProviders
-                        val selectedProvider by viewModel.selectedProvider.collectAsStateWithLifecycle()
-                        var providerMenuExpanded by remember { mutableStateOf(false) }
-
-                        Box {
-                            TextButton(onClick = { providerMenuExpanded = true }) {
-                                Text(selectedProvider)
-                            }
-                            DropdownMenu(
-                                expanded = providerMenuExpanded,
-                                onDismissRequest = { providerMenuExpanded = false }
-                            ) {
-                                availableProviders.forEach { provider ->
-                                    DropdownMenuItem(
-                                        text = { Text(provider) },
-                                        onClick = {
-                                            viewModel.setProvider(provider)
-                                            providerMenuExpanded = false
-                                        }
-                                    )
-                                }
-                            }
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface,
-                    )
-                )
-            },
-            containerColor = MaterialTheme.colorScheme.background
-        ) { paddingValues ->
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues)
-                    .background(com.example.ui.theme.HighDensityMainBg)
-            ) {
-                // Main split: Editor (if active) and Chat
-                if (selectedFile != null) {
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth()
-                    ) {
-                        // Editor Header
-                        Surface(
-                            color = MaterialTheme.colorScheme.surfaceVariant,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = selectedFile!!.path,
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                                Row {
-                                    IconButton(
-                                        onClick = { viewModel.saveCurrentFile() },
-                                        modifier = Modifier.size(32.dp)
-                                    ) {
-                                        Icon(Icons.Default.Save, contentDescription = "Save", modifier = Modifier.size(20.dp))
-                                    }
-                                    IconButton(
-                                        onClick = { viewModel.closeFile() },
-                                        modifier = Modifier.size(32.dp)
-                                    ) {
-                                        Icon(Icons.Default.Close, contentDescription = "Close", modifier = Modifier.size(20.dp))
-                                    }
-                                }
-                            }
-                        }
-                        
-                        // Editor Content
-                        TextField(
-                            value = editorContent,
-                            onValueChange = { viewModel.updateEditorContent(it) },
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .testTag("code_editor"),
-                            textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
-                            colors = TextFieldDefaults.colors(
-                                focusedContainerColor = MaterialTheme.colorScheme.surface,
-                                unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-                                focusedIndicatorColor = Color.Transparent,
-                                unfocusedIndicatorColor = Color.Transparent
-                            )
-                        )
-                    }
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                }
-
-                // Chat Area
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth(),
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    if (messages.isEmpty() && selectedFile == null) {
-                        item {
-                            EmptyState()
-                        }
-                    }
-                    items(messages) { message ->
-                        MessageBubble(message, onReviewProposal = { viewModel.reviewProposal() })
-                    }
-                    if (isBuilding) {
-                        item {
-                            BuildingState()
-                        }
-                    }
-                    if (proposalState == ProposalState.GENERATING) {
-                        item {
-                            GeneratingState()
-                        }
-                    }
-                }
-
-                // Input Area
-                Surface(
-                    color = MaterialTheme.colorScheme.surface,
-                    modifier = Modifier.fillMaxWidth(),
-                    shadowElevation = 8.dp
-                ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp)
-                    ) {
-                        Surface(
-                            color = MaterialTheme.colorScheme.surfaceVariant,
-                            shape = RoundedCornerShape(24.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(8.dp)
-                            ) {
-                                OutlinedTextField(
-                                    value = promptText,
-                                    onValueChange = { promptText = it },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .testTag("prompt_input"),
-                                    placeholder = { Text("Describe your code or feature...", style = MaterialTheme.typography.bodySmall) },
-                                    maxLines = 4,
-                                    textStyle = MaterialTheme.typography.bodyMedium,
-                                    colors = OutlinedTextFieldDefaults.colors(
-                                        focusedContainerColor = Color.Transparent,
-                                        unfocusedContainerColor = Color.Transparent,
-                                        focusedBorderColor = Color.Transparent,
-                                        unfocusedBorderColor = Color.Transparent,
-                                    )
-                                )
-                                
-                                HorizontalDivider(
-                                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
-                                    modifier = Modifier.padding(vertical = 4.dp)
-                                )
-                                
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Row {
-                                        IconButton(onClick = { coroutineScope.launch { drawerState.open() } }) {
-                                            Icon(Icons.Default.Folder, contentDescription = "Files", tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        }
-                                    }
-                                    
-                                    Row(
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        TextButton(
-                                            onClick = {
-                                                if (promptText.isNotBlank() && !isBuilding && proposalState != ProposalState.GENERATING) {
-                                                    viewModel.proposeChange(promptText)
-                                                    promptText = ""
-                                                }
-                                            },
-                                            enabled = !isBuilding && proposalState != ProposalState.GENERATING
-                                        ) {
-                                            Text("PROPOSE", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
-                                        }
-
-                                        Button(
-                                            onClick = {
-                                                if (promptText.isNotBlank() && !isBuilding && proposalState != ProposalState.GENERATING) {
-                                                    viewModel.sendMessage(promptText)
-                                                    promptText = ""
-                                                }
-                                            },
-                                            enabled = !isBuilding && proposalState != ProposalState.GENERATING,
-                                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                                            modifier = Modifier.testTag("send_button"),
-                                            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp)
-                                        ) {
-                                            Text("BUILD", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            Icon(
-                                                imageVector = Icons.AutoMirrored.Filled.Send,
-                                                contentDescription = "Build",
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    if (showNewFileDialog) {
-        var newFilePath by remember { mutableStateOf("") }
-        var isError by remember { mutableStateOf(false) }
-
-        AlertDialog(
-            onDismissRequest = { showNewFileDialog = false },
-            title = { Text("New File") },
-            text = {
-                Column {
-                    OutlinedTextField(
-                        value = newFilePath,
-                        onValueChange = { 
-                            newFilePath = it
-                            isError = it.contains("..") || it.trim().isEmpty()
-                        },
-                        label = { Text("File Path (e.g., src/main.kt)") },
-                        isError = isError,
-                        singleLine = true
-                    )
-                    if (isError) {
-                        Text(
-                            "Invalid path.",
-                            color = MaterialTheme.colorScheme.error,
-                            style = MaterialTheme.typography.labelSmall
-                        )
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        val path = newFilePath.trim()
-                        if (path.isNotEmpty() && !path.contains("..")) {
-                            viewModel.createFile(path)
-                            showNewFileDialog = false
-                        }
-                    },
-                    enabled = !isError && newFilePath.isNotBlank()
-                ) {
-                    Text("Create")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showNewFileDialog = false }) {
-                    Text("Cancel")
-                }
-            }
-        )
-    }
-
-    
-    val applyResult by viewModel.applyResult.collectAsStateWithLifecycle()
+new_ui = """    val applyResult by viewModel.applyResult.collectAsStateWithLifecycle()
 
     if (proposalState == ProposalState.REVIEWING && currentProposal != null) {
         Dialog(
@@ -496,7 +117,7 @@ fun WorkspaceScreen(viewModel: WorkspaceViewModel, onBack: () -> Unit) {
                                                     modifier = Modifier.fillMaxWidth()
                                                 ) {
                                                     Text(
-                                                        text = change.originalContent.take(300) + if (change.originalContent.length > 300) "\n..." else "",
+                                                        text = change.originalContent.take(300) + if (change.originalContent.length > 300) "\\n..." else "",
                                                         style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                                                         modifier = Modifier.padding(8.dp),
                                                         color = MaterialTheme.colorScheme.error
@@ -512,7 +133,7 @@ fun WorkspaceScreen(viewModel: WorkspaceViewModel, onBack: () -> Unit) {
                                                 modifier = Modifier.fillMaxWidth()
                                             ) {
                                                 Text(
-                                                    text = change.proposedContent.take(300) + if (change.proposedContent.length > 300) "\n..." else "",
+                                                    text = change.proposedContent.take(300) + if (change.proposedContent.length > 300) "\\n..." else "",
                                                     style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                                                     modifier = Modifier.padding(8.dp),
                                                     color = Color(0xFF4CAF50)
@@ -597,9 +218,9 @@ fun WorkspaceScreen(viewModel: WorkspaceViewModel, onBack: () -> Unit) {
 
     if (proposalState == ProposalState.FAILED && applyResult != null) {
         val errorMessage = when (val res = applyResult) {
-            is com.example.ai.ApplyResult.ValidationError -> "Validation Error: ${res.message}\n\nFile changed since this proposal was generated. Review again."
-            is com.example.ai.ApplyResult.Conflict -> "Conflict in ${res.filePath}: ${res.message}\n\nFile changed since this proposal was generated. Review again."
-            is com.example.ai.ApplyResult.ApplyError -> "Apply Error: ${res.message}\nRollback successful: ${res.rollbackSucceeded}"
+            is com.example.ai.ApplyResult.ValidationError -> "Validation Error: ${res.message}\\n\\nFile changed since this proposal was generated. Review again."
+            is com.example.ai.ApplyResult.Conflict -> "Conflict in ${res.filePath}: ${res.message}\\n\\nFile changed since this proposal was generated. Review again."
+            is com.example.ai.ApplyResult.ApplyError -> "Apply Error: ${res.message}\\nRollback successful: ${res.rollbackSucceeded}"
             is com.example.ai.ApplyResult.RollbackError -> "Critical Error during Rollback: ${res.rollbackError}"
             else -> "Unknown error"
         }
@@ -660,7 +281,7 @@ fun FileExplorerContent(
         if (files.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(
-                    "No files yet.\nTap + to create one.",
+                    "No files yet.\\nTap + to create one.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -851,3 +472,9 @@ fun GeneratingState() {
         }
     }
 }
+"""
+
+with open('app/src/main/java/com/example/ui/WorkspaceScreen.kt', 'w') as f:
+    f.writelines(new_lines)
+    f.write(new_ui)
+

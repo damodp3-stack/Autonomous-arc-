@@ -97,10 +97,10 @@ class CodeChangeApplier(
             }
         }
 
-        return ApplyResult.Success(appliedChanges)
+        return ApplyResult.Success(appliedChanges, createdFileIds, snapshot)
     }
 
-    private suspend fun rollback(
+    suspend fun rollback(
         createdFileIds: List<String>,
         snapshot: Map<String, ProjectFileEntity?>
     ) {

@@ -1,0 +1,120 @@
+e: file:///app/applet/app/src/main/java/com/example/ui/AppNavigation.kt:60:13 Unresolved reference 'WorkspaceScreen'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:5:1 Syntax error: Expecting a top level declaration.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:5:9 Syntax error: Expecting a top level declaration.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:5:12 Syntax error: Expecting a top level declaration.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:5:13 Syntax error: Expecting a top level declaration.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:5:20 Syntax error: Expecting a top level declaration.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:5:21 Syntax error: Expecting a top level declaration.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:5:23 Syntax error: imports are only allowed in the beginning of file.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:42:32 Unresolved reference 'WorkspaceViewModel'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:43:18 Property delegate must have a 'getValue(Nothing?, KProperty0<ERROR CLASS: Cannot infer argument for type parameter T>)' method. None of the following functions is applicable:
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:43:21 Cannot infer type for this parameter. Specify it explicitly.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:43:31 Unresolved reference 'messages'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:43:40 Cannot infer type for this parameter. Specify it explicitly.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:44:21 Property delegate must have a 'getValue(Nothing?, KProperty0<ERROR CLASS: Cannot infer argument for type parameter T>)' method. None of the following functions is applicable:
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:44:24 Cannot infer type for this parameter. Specify it explicitly.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:44:34 Unresolved reference 'projectName'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:44:46 Cannot infer type for this parameter. Specify it explicitly.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:45:20 Property delegate must have a 'getValue(Nothing?, KProperty0<ERROR CLASS: Cannot infer argument for type parameter T>)' method. None of the following functions is applicable:
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:45:23 Cannot infer type for this parameter. Specify it explicitly.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:45:33 Unresolved reference 'isBuilding'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:45:44 Cannot infer type for this parameter. Specify it explicitly.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:46:15 Property delegate must have a 'getValue(Nothing?, KProperty0<ERROR CLASS: Cannot infer argument for type parameter T>)' method. None of the following functions is applicable:
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:46:18 Cannot infer type for this parameter. Specify it explicitly.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:46:28 Unresolved reference 'files'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:46:34 Cannot infer type for this parameter. Specify it explicitly.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:47:22 Property delegate must have a 'getValue(Nothing?, KProperty0<ERROR CLASS: Cannot infer argument for type parameter T>)' method. None of the following functions is applicable:
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:47:25 Cannot infer type for this parameter. Specify it explicitly.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:47:35 Unresolved reference 'selectedFile'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:47:48 Cannot infer type for this parameter. Specify it explicitly.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:48:23 Property delegate must have a 'getValue(Nothing?, KProperty0<ERROR CLASS: Cannot infer argument for type parameter T>)' method. None of the following functions is applicable:
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:48:26 Cannot infer type for this parameter. Specify it explicitly.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:48:36 Unresolved reference 'editorContent'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:48:50 Cannot infer type for this parameter. Specify it explicitly.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:50:23 Property delegate must have a 'getValue(Nothing?, KProperty0<ERROR CLASS: Cannot infer argument for type parameter T>)' method. None of the following functions is applicable:
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:50:26 Cannot infer type for this parameter. Specify it explicitly.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:50:36 Unresolved reference 'proposalState'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:50:50 Cannot infer type for this parameter. Specify it explicitly.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:51:25 Property delegate must have a 'getValue(Nothing?, KProperty0<ERROR CLASS: Cannot infer argument for type parameter T>)' method. None of the following functions is applicable:
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:51:28 Cannot infer type for this parameter. Specify it explicitly.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:51:38 Unresolved reference 'currentProposal'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:51:54 Cannot infer type for this parameter. Specify it explicitly.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:52:23 Property delegate must have a 'getValue(Nothing?, KProperty0<ERROR CLASS: Cannot infer argument for type parameter T>)' method. None of the following functions is applicable:
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:52:26 Cannot infer type for this parameter. Specify it explicitly.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:52:36 Unresolved reference 'proposalError'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:52:50 Cannot infer type for this parameter. Specify it explicitly.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:61:29 Function invocation 'size(...)' expected.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:63:52 Function invocation 'size(...)' expected.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:74:35 Unresolved reference 'selectFile'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:78:48 Unresolved reference 'deleteFile'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:114:60 Unresolved reference 'availableProviders'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:115:46 Property delegate must have a 'getValue(Nothing?, KProperty0<ERROR CLASS: Cannot infer argument for type parameter T>)' method. None of the following functions is applicable:
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:115:49 Cannot infer type for this parameter. Specify it explicitly.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:115:59 Unresolved reference 'selectedProvider'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:115:76 Cannot infer type for this parameter. Specify it explicitly.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:126:62 Cannot infer type for this parameter. Specify it explicitly.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:127:37 @Composable invocations can only happen from the context of a @Composable function
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:130:55 Unresolved reference 'setProvider'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:174:48 Not enough information to infer type argument for 'K'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:174:63 Unresolved reference 'path'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:181:63 Unresolved reference 'saveCurrentFile'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:187:63 Unresolved reference 'closeFile'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:199:57 Unresolved reference 'updateEditorContent'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:199:77 Unresolved reference 'it'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:230:39 Argument type mismatch: actual type is 'Int', but 'MessageEntity' was expected.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:230:79 Unresolved reference 'reviewProposal'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:237:42 Unresolved reference 'ProposalState'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:300:80 Unresolved reference 'not' for operator '!'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:300:112 Unresolved reference 'ProposalState'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:301:63 Unresolved reference 'proposeChange'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:305:55 Unresolved reference 'not' for operator '!'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:305:87 Unresolved reference 'ProposalState'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:312:80 Unresolved reference 'not' for operator '!'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:312:112 Unresolved reference 'ProposalState'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:313:63 Unresolved reference 'sendMessage'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:317:55 Unresolved reference 'not' for operator '!'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:317:87 Unresolved reference 'ProposalState'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:373:39 Unresolved reference 'createFile'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:391:21 Property delegate must have a 'getValue(Nothing?, KProperty0<ERROR CLASS: Cannot infer argument for type parameter T>)' method. None of the following functions is applicable:
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:391:24 Cannot infer type for this parameter. Specify it explicitly.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:391:34 Unresolved reference 'applyResult'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:391:46 Cannot infer type for this parameter. Specify it explicitly.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:393:26 Unresolved reference 'ProposalState'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:395:44 Unresolved reference 'dismissProposal'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:407:62 Unresolved reference 'dismissProposal'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:425:36 Not enough information to infer type argument for 'K'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:425:54 Unresolved reference 'summary'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:431:36 Not enough information to infer type argument for 'K'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:431:54 Unresolved reference 'explanation'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:436:39 Not enough information to infer type argument for 'K'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:436:57 Unresolved reference 'changes'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:446:35 Not enough information to infer type argument for 'K'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:446:53 Unresolved reference 'changes'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:458:63 Unresolved reference 'filePath'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:462:59 'when' expression must be exhaustive. Add an 'else' branch.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:462:71 Unresolved reference 'operation'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:472:67 Unresolved reference 'operation'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:483:52 Unresolved reference 'operation'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:491:56 Unresolved reference 'operation'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:499:71 Unresolved reference 'originalContent'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:499:110 Unresolved reference 'originalContent'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:515:67 Unresolved reference 'proposedContent'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:515:106 Unresolved reference 'proposedContent'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:532:62 Unresolved reference 'rejectProposal'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:536:58 Unresolved reference 'approveAndApplyProposal'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:546:26 Unresolved reference 'ProposalState'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:567:26 Unresolved reference 'ProposalState'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:569:44 Unresolved reference 'dismissProposal'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:573:50 Unresolved reference 'dismissProposal'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:578:50 Unresolved reference 'rollbackProposal'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:585:26 Unresolved reference 'ProposalState'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:587:44 Unresolved reference 'dismissProposal'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:591:50 Unresolved reference 'dismissProposal'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:598:26 Unresolved reference 'ProposalState'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:607:44 Unresolved reference 'dismissProposal'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:611:50 Unresolved reference 'dismissProposal'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:618:26 Unresolved reference 'ProposalState'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:619:37 Unresolved reference 'proposalError'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:619:51 Cannot infer type for this parameter. Specify it explicitly.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:621:44 Unresolved reference 'dismissProposal'.
+e: file:///app/applet/app/src/main/java/com/example/ui/WorkspaceScreen.kt:625:50 Unresolved reference 'dismissProposal'.

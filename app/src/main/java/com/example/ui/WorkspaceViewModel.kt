@@ -14,17 +14,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-
 import com.example.ai.ProjectContext
 import com.example.data.ProjectFileEntity
 import com.example.data.ProjectFileRepository
 
 enum class ProposalState {
-    IDLE, GENERATING, READY, ERROR
-}
-
-enum class ApplyState {
-    IDLE, APPLYING, SUCCESS, ERROR
+    IDLE, GENERATING, READY_FOR_REVIEW, REVIEWING, APPROVED, APPLYING, APPLIED, REJECTED, FAILED
 }
 
 class WorkspaceViewModel(
@@ -49,9 +44,6 @@ class WorkspaceViewModel(
 
     private val _proposalError = MutableStateFlow<String?>(null)
     val proposalError: StateFlow<String?> = _proposalError.asStateFlow()
-
-    private val _applyState = MutableStateFlow(ApplyState.IDLE)
-    val applyState: StateFlow<ApplyState> = _applyState.asStateFlow()
 
     private val _applyResult = MutableStateFlow<com.example.ai.ApplyResult?>(null)
     val applyResult: StateFlow<com.example.ai.ApplyResult?> = _applyResult.asStateFlow()
@@ -116,7 +108,6 @@ class WorkspaceViewModel(
         val currentFile = _selectedFile.value ?: return
         viewModelScope.launch {
             fileRepository.updateFileContent(currentFile.id, _editorContent.value)
-            // Reload the file to get the updated entity
             _selectedFile.value = fileRepository.getFile(currentFile.id)
         }
     }
@@ -148,23 +139,15 @@ class WorkspaceViewModel(
     fun sendMessage(text: String) {
         if (text.isBlank()) return
         viewModelScope.launch {
-            // 1. Save user message
             messageRepository.insert(MessageEntity(projectId = projectId, text = text, isUser = true))
-            
-            // 2. Simulate AI processing
             _isBuilding.value = true
-            
             val aiProvider = providers[_selectedProvider.value] ?: providers.values.first()
-            
             val projectContext = ProjectContext(
                 projectName = _projectName.value,
                 files = files.value,
                 currentOpenFile = _selectedFile.value
             )
-            
             val aiResponse = aiProvider.generateResponse(text, messages.value, projectContext)
-            
-            // 3. Save AI response
             messageRepository.insert(MessageEntity(
                 projectId = projectId,
                 text = aiResponse,
@@ -177,10 +160,10 @@ class WorkspaceViewModel(
     fun proposeChange(request: String) {
         if (request.isBlank()) return
         viewModelScope.launch {
+            messageRepository.insert(MessageEntity(projectId = projectId, text = request, isUser = true))
             _proposalState.value = ProposalState.GENERATING
             _currentProposal.value = null
             _proposalError.value = null
-
             try {
                 val aiProvider = providers[_selectedProvider.value] ?: providers.values.first()
                 val projectContext = ProjectContext(
@@ -190,36 +173,52 @@ class WorkspaceViewModel(
                 )
                 val proposal = aiProvider.proposeCodeChanges(request, projectContext)
                 _currentProposal.value = proposal
-                _proposalState.value = ProposalState.READY
+                
+                messageRepository.insert(MessageEntity(
+                    projectId = projectId,
+                    text = "AI proposed changes\n\nSummary: ${proposal.summary}",
+                    isUser = false
+                ))
+                
+                _proposalState.value = ProposalState.READY_FOR_REVIEW
             } catch (e: Exception) {
                 _proposalError.value = e.message ?: "An unknown error occurred"
-                _proposalState.value = ProposalState.ERROR
+                _proposalState.value = ProposalState.FAILED
             }
         }
     }
 
-    fun clearProposal() {
+    fun reviewProposal() {
+        if (_proposalState.value == ProposalState.READY_FOR_REVIEW) {
+            _proposalState.value = ProposalState.REVIEWING
+        }
+    }
+
+    fun rejectProposal() {
+        _proposalState.value = ProposalState.REJECTED
+    }
+    
+    fun dismissProposal() {
         _proposalState.value = ProposalState.IDLE
         _currentProposal.value = null
         _proposalError.value = null
-        _applyState.value = ApplyState.IDLE
         _applyResult.value = null
     }
 
-    fun applyProposal() {
+    fun approveAndApplyProposal() {
         val proposal = _currentProposal.value ?: return
-        if (_applyState.value == ApplyState.APPLYING) return
-
+        if (_proposalState.value == ProposalState.APPLYING) return
+        
         viewModelScope.launch {
-            _applyState.value = ApplyState.APPLYING
+            _proposalState.value = ProposalState.APPROVED
+            _proposalState.value = ProposalState.APPLYING
             _applyResult.value = null
-
+            
             val result = codeChangeApplier.applyProposal(projectId, proposal)
             _applyResult.value = result
             
             if (result is com.example.ai.ApplyResult.Success) {
-                _applyState.value = ApplyState.SUCCESS
-                // Refresh currently selected file if affected
+                _proposalState.value = ProposalState.APPLIED
                 val currentFile = _selectedFile.value
                 if (currentFile != null) {
                     val updatedFile = fileRepository.getFile(currentFile.id)
@@ -227,13 +226,39 @@ class WorkspaceViewModel(
                         _editorContent.value = updatedFile.content
                         _selectedFile.value = updatedFile
                     } else {
-                        // File was deleted
                         _selectedFile.value = null
                         _editorContent.value = ""
                     }
                 }
             } else {
-                _applyState.value = ApplyState.ERROR
+                _proposalState.value = ProposalState.FAILED
+            }
+        }
+    }
+    
+    fun rollbackProposal() {
+        val result = _applyResult.value as? com.example.ai.ApplyResult.Success ?: return
+        viewModelScope.launch {
+            try {
+                codeChangeApplier.rollback(result.createdFileIds, result.snapshot)
+                _proposalState.value = ProposalState.IDLE
+                _currentProposal.value = null
+                _applyResult.value = null
+                
+                val currentFile = _selectedFile.value
+                if (currentFile != null) {
+                    val updatedFile = fileRepository.getFile(currentFile.id)
+                    if (updatedFile != null) {
+                        _editorContent.value = updatedFile.content
+                        _selectedFile.value = updatedFile
+                    } else {
+                        _selectedFile.value = null
+                        _editorContent.value = ""
+                    }
+                }
+            } catch (e: Exception) {
+                _proposalError.value = "Rollback failed: ${e.message}"
+                _proposalState.value = ProposalState.FAILED
             }
         }
     }
