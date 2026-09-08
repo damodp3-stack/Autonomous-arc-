@@ -2,7 +2,14 @@
 
 The historical development record for Autonomous Arc.
 
-## [Phase 3 - AI Coding Agent] - Current
+## [Phase 4 - True Filesystem Workspace] - Current
+- **Added:** Real Project Filesystem abstraction (`ProjectFileSystem`).
+- **Added:** Secure project-private directories.
+- **Updated:** Room ↔ Filesystem bi-directional synchronization.
+- **Updated:** Apply engine and Rollback natively write to real files.
+- **Updated:** Project migration logic on Workspace initialization.
+
+## [Phase 3 - AI Coding Agent]
 - **Added:** Diff Viewer and Human Approval Workflow.
 - **Added:** Dedicated `ProposalState` enum to manage proposal lifecycle.
 - **Added:** `Reject` and `Approve & Apply` safeguards.

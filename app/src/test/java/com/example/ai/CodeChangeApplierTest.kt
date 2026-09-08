@@ -6,6 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.example.data.AppDatabase
 import com.example.data.ProjectFileDao
 import com.example.data.ProjectFileRepository
+import com.example.data.ProjectFileSystem
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.*
@@ -31,7 +32,8 @@ class CodeChangeApplierTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
         dao = db.projectFileDao()
-        repository = ProjectFileRepository(dao)
+        val fileSystem = ProjectFileSystem(context)
+        repository = ProjectFileRepository(dao, fileSystem)
         applier = CodeChangeApplier(repository)
     }
 

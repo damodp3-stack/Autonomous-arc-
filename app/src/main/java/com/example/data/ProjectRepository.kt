@@ -1,10 +1,6 @@
 package com.example.data
 
-
-
 import kotlinx.coroutines.flow.Flow
-
-
 import kotlinx.coroutines.flow.firstOrNull
 
 interface ProjectRepository {
@@ -18,9 +14,8 @@ interface ProjectRepository {
 class LocalProjectRepository(
     private val projectDao: ProjectDao,
     private val messageDao: MessageDao,
-    private val projectFileDao: ProjectFileDao
+    private val projectFileRepository: ProjectFileRepository
 ) : ProjectRepository {
-
     override fun getAllProjects(): Flow<List<ProjectEntity>> = projectDao.getAllProjects()
 
     override fun getProject(projectId: String): Flow<ProjectEntity?> = projectDao.getProject(projectId)
@@ -40,7 +35,7 @@ class LocalProjectRepository(
     }
 
     override suspend fun deleteProject(projectId: String) {
-        projectFileDao.clearFilesForProject(projectId)
+        projectFileRepository.clearFilesForProject(projectId)
         messageDao.clearMessages(projectId)
         projectDao.deleteProject(projectId)
     }

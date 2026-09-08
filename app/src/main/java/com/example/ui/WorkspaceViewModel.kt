@@ -119,6 +119,7 @@ class WorkspaceViewModel(
 
     init {
         viewModelScope.launch {
+            fileRepository.syncProjectFilesToSystem(projectId)
             projectRepository.getProject(projectId).collect { project ->
                 if (project != null) {
                     _projectName.value = project.name
@@ -152,7 +153,9 @@ class WorkspaceViewModel(
     fun createFile(path: String) {
         viewModelScope.launch {
             val newFile = fileRepository.createFile(projectId, path)
-            selectFile(newFile)
+            if (newFile != null) {
+                selectFile(newFile)
+            }
         }
     }
 

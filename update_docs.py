@@ -1,42 +1,40 @@
 import re
 
-def update_file(filepath, replacement_map):
-    try:
-        with open(filepath, 'r') as f:
-            content = f.read()
-            
-        for k, v in replacement_map.items():
-            content = content.replace(k, v)
-            
-        with open(filepath, 'w') as f:
-            f.write(content)
-    except FileNotFoundError:
-        pass
+with open('docs/PROJECT_STATE.md', 'r') as f:
+    content = f.read()
 
-# PROJECT_STATE.md
-update_file('docs/PROJECT_STATE.md', {
-    '- [ ] Phase 3.1: Harden safe apply engine (security, normalization, UI state)': '- [x] Phase 3.1: Harden safe apply engine (security, normalization, UI state)',
-    '- [ ] Phase 3.2: Diff viewer and manual approval workflow': '- [x] Phase 3.2: Diff viewer and manual approval workflow',
-    'Current focus: Implement the safe code change apply engine (Phase 3).': 'Current focus: Moving to Phase 4 (Build & Run Engine) after completing Phase 3 (Safe Code Apply & Diff Review).'
-})
+content = content.replace(
+    '- Implement True Filesystem Sync (Phase 4). Currently files exist in Room DB; they need to be written to a real file system or in-memory file system for compilation.',
+    '- **True Filesystem Workspace completed.** (Phase 4) Project files are now securely synchronized and managed across both the Room database and the Android app-private filesystem. The AI Apply Engine and rollback mechanism operate atomically on real files.'
+)
 
-# ROADMAP.md
-update_file('docs/ROADMAP.md', {
-    '- [ ] Phase 3.1: Harden safe apply engine (security, normalization, validation)': '- [x] Phase 3.1: Harden safe apply engine (security, normalization, validation)',
-    '- [ ] Phase 3.2: Diff viewer and manual approval workflow': '- [x] Phase 3.2: Diff viewer and manual approval workflow'
-})
+with open('docs/PROJECT_STATE.md', 'w') as f:
+    f.write(content)
 
-# CHANGELOG.md
-changelog_add = """## [Unreleased]
-### Added
-- Diff Viewer screen for human review of AI code proposals
-- ProposalState unified enum for tracking generation, review, and application
-- Approve and Reject buttons with safe rollback
-- Path normalization and validation in CodeChangeApplier
+with open('docs/ROADMAP.md', 'r') as f:
+    content = f.read()
 
-"""
+content = content.replace(
+    '- [ ] Pending: Diff Viewer for more granular approval before applying.',
+    '- [x] Completed: Diff Viewer & Human Approval Workflow.'
+)
+
+content = content.replace(
+    '**Phase 4 — Media & Ideas**',
+    '**Phase 4 — Real Filesystem Integration**\n- [x] Completed: True Filesystem Sync. Room DB files securely mirrored to Android private app storage. All operations (Create, Edit, Delete, Rename, Apply, Rollback) execute safely on actual filesystem.\n\n**Phase 4.5 — Media & Ideas**'
+)
+
+with open('docs/ROADMAP.md', 'w') as f:
+    f.write(content)
+
 with open('docs/CHANGELOG.md', 'r') as f:
     content = f.read()
+
+content = content.replace(
+    '## [Phase 3 - AI Coding Agent] - Current',
+    '## [Phase 4 - True Filesystem Workspace] - Current\n- **Added:** Real Project Filesystem abstraction (`ProjectFileSystem`).\n- **Added:** Secure project-private directories.\n- **Updated:** Room ↔ Filesystem bi-directional synchronization.\n- **Updated:** Apply engine and Rollback natively write to real files.\n- **Updated:** Project migration logic on Workspace initialization.\n\n## [Phase 3 - AI Coding Agent]'
+)
+
 with open('docs/CHANGELOG.md', 'w') as f:
-    f.write(content.replace('## [Unreleased]', changelog_add))
+    f.write(content)
 

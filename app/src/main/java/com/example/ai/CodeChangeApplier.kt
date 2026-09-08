@@ -76,7 +76,11 @@ class CodeChangeApplier(
                 when (change.operation) {
                     FileOperation.CREATE -> {
                         val newFile = repository.createFile(projectId, path, change.proposedContent)
-                        createdFileIds.add(newFile.id)
+                        if (newFile != null) {
+                            createdFileIds.add(newFile.id)
+                        } else {
+                            throw Exception("Failed to write to filesystem")
+                        }
                     }
                     FileOperation.MODIFY -> {
                         repository.updateFileContent(existingFile!!.id, change.proposedContent)

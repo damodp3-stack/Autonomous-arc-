@@ -1,48 +1,18 @@
 package com.example.ui
 
-
-
-
 import androidx.compose.runtime.Composable
-
-
-
 import androidx.lifecycle.viewmodel.compose.viewModel
-
-
-
 import androidx.navigation.compose.NavHost
-
-
-
 import androidx.navigation.compose.composable
-
-
-
 import androidx.navigation.compose.rememberNavController
-
-
 import com.example.ai.MockAIProvider
-
-
 import com.example.ai.GeminiAIProvider
-
-
 import com.example.data.AppDatabase
-
-
 import com.example.data.LocalProjectRepository
-
-
 import com.example.data.MessageRepository
-
-
-
 import androidx.compose.ui.platform.LocalContext
-
-
-
 import com.example.data.ProjectFileRepository
+import com.example.data.ProjectFileSystem
 
 @Composable
 fun AppNavigation() {
@@ -50,9 +20,10 @@ fun AppNavigation() {
     val context = LocalContext.current
     
     val database = AppDatabase.getDatabase(context)
+    val fileSystem = ProjectFileSystem(context)
     val messageRepository = MessageRepository(database.messageDao())
-    val fileRepository = ProjectFileRepository(database.projectFileDao())
-    val projectRepository = LocalProjectRepository(database.projectDao(), database.messageDao(), database.projectFileDao())
+    val fileRepository = ProjectFileRepository(database.projectFileDao(), fileSystem)
+    val projectRepository = LocalProjectRepository(database.projectDao(), database.messageDao(), fileRepository)
 
     NavHost(navController = navController, startDestination = "project_list") {
         composable("project_list") {
