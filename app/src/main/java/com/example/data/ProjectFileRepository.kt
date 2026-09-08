@@ -23,6 +23,9 @@ class ProjectFileRepository(private val fileDao: ProjectFileDao, private val fil
         if (!isDirectory) {
             val success = fileSystem.writeFile(projectId, path, content)
             if (!success) return null
+        } else {
+            val success = fileSystem.createDirectory(projectId, path)
+            if (!success) return null
         }
         
         val name = path.substringAfterLast('/')
@@ -42,25 +45,32 @@ class ProjectFileRepository(private val fileDao: ProjectFileDao, private val fil
         return newFile
     }
 
-    suspend fun restoreFile(file: ProjectFileEntity) {
+    suspend fun restoreFile(file: ProjectFileEntity): Boolean {
         if (!file.isDirectory) {
-            fileSystem.writeFile(file.projectId, file.path, file.content)
+            val success = fileSystem.writeFile(file.projectId, file.path, file.content)
+            if (!success) return false
+        } else {
+            val success = fileSystem.createDirectory(file.projectId, file.path)
+            if (!success) return false
         }
         fileDao.insertFile(file)
+        return true
     }
 
-    suspend fun updateFileContent(fileId: String, newContent: String) {
+    suspend fun updateFileContent(fileId: String, newContent: String): Boolean {
         val file = fileDao.getFile(fileId)
         if (file != null) {
             val success = fileSystem.writeFile(file.projectId, file.path, newContent)
             if (success) {
                 val updatedFile = file.copy(content = newContent, updatedAt = System.currentTimeMillis())
                 fileDao.updateFile(updatedFile)
+                return true
             }
         }
+        return false
     }
 
-    suspend fun renameFile(fileId: String, newPath: String) {
+    suspend fun renameFile(fileId: String, newPath: String): Boolean {
         val file = fileDao.getFile(fileId)
         if (file != null) {
             val success = fileSystem.renameFile(file.projectId, file.path, newPath)
@@ -77,34 +87,52 @@ class ProjectFileRepository(private val fileDao: ProjectFileDao, private val fil
                     updatedAt = System.currentTimeMillis()
                 )
                 fileDao.updateFile(updatedFile)
+                return true
             }
         }
+        return false
     }
 
-    suspend fun deleteFile(fileId: String) {
+    suspend fun deleteFile(fileId: String): Boolean {
         val file = fileDao.getFile(fileId)
         if (file != null) {
             val success = fileSystem.deleteFile(file.projectId, file.path)
             val fsFile = fileSystem.getProjectFile(file.projectId, file.path)
             if (success || (fsFile != null && !fsFile.exists())) {
                 fileDao.deleteFile(fileId)
+                return true
             }
         }
+        return false
     }
 
-    
     suspend fun syncProjectFilesToSystem(projectId: String) {
-        val projectDir = fileSystem.getProjectRoot(projectId)
-        if (!projectDir.exists() || projectDir.list()?.isEmpty() == true) {
+        try {
             val filesFlow = fileDao.getFilesForProject(projectId)
-                        val files = filesFlow.firstOrNull() ?: emptyList()
-            for (file in files) {
-                if (!file.isDirectory) {
-                    fileSystem.writeFile(file.projectId, file.path, file.content)
+            val roomFiles = filesFlow.firstOrNull() ?: emptyList()
+            
+            for (roomFile in roomFiles) {
+                val fsFile = fileSystem.getProjectFile(projectId, roomFile.path)
+                if (fsFile == null) continue
+                
+                if (!fsFile.exists()) {
+                    if (roomFile.isDirectory) {
+                        fileSystem.createDirectory(projectId, roomFile.path)
+                    } else {
+                        fileSystem.writeFile(projectId, roomFile.path, roomFile.content)
+                    }
                 } else {
-                    fileSystem.getProjectFile(file.projectId, file.path)?.mkdirs()
+                    if (!roomFile.isDirectory && fsFile.isFile) {
+                        val fsContent = fileSystem.readFile(projectId, roomFile.path)
+                        if (fsContent != null && fsContent != roomFile.content) {
+                            val updatedFile = roomFile.copy(content = fsContent, updatedAt = System.currentTimeMillis())
+                            fileDao.updateFile(updatedFile)
+                        }
+                    }
                 }
             }
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 

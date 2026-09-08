@@ -16,6 +16,12 @@ Maintain important architectural and product decisions.
 
 ## Future Decisions
 
+**Decision:** True Filesystem Engine for Project Storage
+**Date:** 2026-09-08
+**Reason:** Room DB is great for text, but actual code compilation (and future GitHub integration) requires physical files. We built `ProjectFileSystem` to mirror Room, synchronizing at startup and operating atomically during apply/rollback.
+**Alternatives considered:** Relying purely on Room (impossible for standard toolchains). Using Scoped Storage (SAF) - too much overhead and user permission friction compared to app-private storage.
+**Impact:** Required writing atomic `writeFile`, hardening path traversal protections, updating the Apply/Rollback Engine, and modifying `WorkspaceViewModel` to sync on open.
+
 **Decision:** AI-generated code changes are represented as proposals and require a later explicit approval/apply stage rather than directly modifying project files.
 **Date:** 2026-09-03
 **Reason:** Ensures user control over modifications and provides a safe abstraction before any destructive actions are performed.
@@ -23,7 +29,6 @@ Maintain important architectural and product decisions.
 **Impact:** Required introducing the `CodeChangeProposal` model and a distinct UI flow before applying changes.
 
 *(Template for future decisions)*
-
 **Decision:** [What was decided]
 **Date:** [YYYY-MM-DD]
 **Reason:** [Why this decision was made]

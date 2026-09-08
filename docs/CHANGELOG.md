@@ -4,10 +4,12 @@ The historical development record for Autonomous Arc.
 
 ## [Phase 4 - True Filesystem Workspace] - Current
 - **Added:** Real Project Filesystem abstraction (`ProjectFileSystem`).
-- **Added:** Secure project-private directories.
+- **Added:** Secure project-private directories within Android app-private storage.
+- **Added:** Atomic writes using `.tmp_` swap-and-rename files.
+- **Added:** Strict `canonicalPath` validation to reject all sibling-prefix and path traversal attempts.
 - **Updated:** Room ↔ Filesystem bi-directional synchronization.
-- **Updated:** Apply engine and Rollback natively write to real files.
-- **Updated:** Project migration logic on Workspace initialization.
+- **Updated:** Apply engine and Rollback natively write to real files with true atomicity guarantees.
+- **Updated:** Project migration logic on Workspace initialization (`syncProjectFilesToSystem`).
 
 ## [Phase 3 - AI Coding Agent]
 - **Added:** Diff Viewer and Human Approval Workflow.

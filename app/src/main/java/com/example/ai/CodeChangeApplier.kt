@@ -1,10 +1,6 @@
 package com.example.ai
 
-
-
 import com.example.data.ProjectFileEntity
-
-
 import com.example.data.ProjectFileRepository
 
 class CodeChangeApplier(
@@ -71,7 +67,7 @@ class CodeChangeApplier(
         for (change in normalizedChanges) {
             val path = change.filePath
             val existingFile = snapshot[path]
-
+            
             try {
                 when (change.operation) {
                     FileOperation.CREATE -> {
@@ -83,10 +79,16 @@ class CodeChangeApplier(
                         }
                     }
                     FileOperation.MODIFY -> {
-                        repository.updateFileContent(existingFile!!.id, change.proposedContent)
+                        val success = repository.updateFileContent(existingFile!!.id, change.proposedContent)
+                        if (!success) {
+                            throw Exception("Failed to update file on filesystem")
+                        }
                     }
                     FileOperation.DELETE -> {
-                        repository.deleteFile(existingFile!!.id)
+                        val success = repository.deleteFile(existingFile!!.id)
+                        if (!success) {
+                            throw Exception("Failed to delete file on filesystem")
+                        }
                     }
                 }
                 appliedChanges.add(change)
@@ -123,7 +125,10 @@ class CodeChangeApplier(
                 // If it exists, it was either modified or deleted.
                 // We'll just restore the original entity. 
                 // Using restoreFile will essentially do an INSERT with REPLACE (if OnConflictStrategy.REPLACE is used in Dao)
-                repository.restoreFile(entity)
+                val success = repository.restoreFile(entity)
+                if (!success) {
+                    throw Exception("Failed to restore file ${entity.path} during rollback")
+                }
             }
         }
     }
@@ -136,7 +141,6 @@ class CodeChangeApplier(
     fun normalizePath(path: String): String? {
         if (path.isBlank()) return null
         if (path.contains("\u0000")) return null
-
         val unixPath = path.replace("\\", "/")
         
         // Reject absolute paths and UNC
@@ -147,7 +151,6 @@ class CodeChangeApplier(
 
         val segments = unixPath.split("/")
         val normalizedSegments = mutableListOf<String>()
-
         for (segment in segments) {
             if (segment.isEmpty() || segment == ".") {
                 continue
@@ -161,9 +164,8 @@ class CodeChangeApplier(
                 normalizedSegments.add(segment)
             }
         }
-
+        
         if (normalizedSegments.isEmpty()) return null
-
         return normalizedSegments.joinToString("/")
     }
 }
