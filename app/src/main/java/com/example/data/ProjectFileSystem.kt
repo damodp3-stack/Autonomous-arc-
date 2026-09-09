@@ -168,9 +168,58 @@ class ProjectFileSystem(private val context: Context) {
             val rootDir = java.io.File(context.filesDir, "projects")
             val targetDir = java.io.File(rootDir, projectId)
             val stagingDir = java.io.File(rootDir, stagingProjectId)
+            val backupDir = java.io.File(rootDir, "$projectId-backup")
+
             if (!stagingDir.exists()) return false
-            if (targetDir.exists()) { if (!targetDir.deleteRecursively()) return false }
-            return stagingDir.renameTo(targetDir)
-        } catch (e: Exception) { e.printStackTrace(); return false }
+
+            if (backupDir.exists()) backupDir.deleteRecursively()
+
+            if (targetDir.exists()) {
+                val backupSuccess = targetDir.renameTo(backupDir)
+                if (!backupSuccess) return false
+            }
+
+            val renameSuccess = stagingDir.renameTo(targetDir)
+            if (!renameSuccess) {
+                if (backupDir.exists()) {
+                    targetDir.deleteRecursively()
+                    backupDir.renameTo(targetDir)
+                }
+                return false
+            }
+
+            return true
+        } catch (e: Exception) { 
+            e.printStackTrace()
+            return false 
+        }
+    }
+
+    fun restoreBackupProject(projectId: String): Boolean {
+        try {
+            val rootDir = java.io.File(context.filesDir, "projects")
+            val targetDir = java.io.File(rootDir, projectId)
+            val backupDir = java.io.File(rootDir, "$projectId-backup")
+            
+            if (!backupDir.exists()) return true // Nothing to restore
+
+            targetDir.deleteRecursively()
+            return backupDir.renameTo(targetDir)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return false
+        }
+    }
+
+    fun cleanupBackupProject(projectId: String) {
+        try {
+            val rootDir = java.io.File(context.filesDir, "projects")
+            val backupDir = java.io.File(rootDir, "$projectId-backup")
+            if (backupDir.exists()) {
+                backupDir.deleteRecursively()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 }

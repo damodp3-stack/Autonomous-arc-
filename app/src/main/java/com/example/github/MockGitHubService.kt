@@ -12,24 +12,16 @@ class MockGitHubService : GitHubService, GitHubAuthService, GitHubSyncService {
     )
 
     private val mockRepos = listOf(
-        GitHubRepository(
-            id = 1,
-            name = "autonomous-arc",
-            fullName = "mock_user/autonomous-arc",
-            private = false,
-            htmlUrl = "https://github.com/mock_user/autonomous-arc",
-            description = "Mock repo",
-            defaultBranch = "main"
-        ),
-        GitHubRepository(
-            id = 2,
-            name = "test-repo",
-            fullName = "mock_user/test-repo",
-            private = true,
-            htmlUrl = "https://github.com/mock_user/test-repo",
-            description = "Another mock repo",
-            defaultBranch = "master"
-        )
+        GitHubRepository(1, "normal-repo", "mock_user/normal-repo", false, "url", "desc", "main"),
+        GitHubRepository(2, "truncated-repo", "mock_user/truncated-repo", false, "url", "desc", "main"),
+        GitHubRepository(3, "oversized-repo", "mock_user/oversized-repo", false, "url", "desc", "main"),
+        GitHubRepository(4, "duplicate-repo", "mock_user/duplicate-repo", false, "url", "desc", "main"),
+        GitHubRepository(5, "collision-repo", "mock_user/collision-repo", false, "url", "desc", "main"),
+        GitHubRepository(6, "invalid-path-repo", "mock_user/invalid-path-repo", false, "url", "desc", "main"),
+        GitHubRepository(7, "too-many-files-repo", "mock_user/too-many-files-repo", false, "url", "desc", "main"),
+        GitHubRepository(8, "oversized-total-repo", "mock_user/oversized-total-repo", false, "url", "desc", "main"),
+        GitHubRepository(9, "deep-repo", "mock_user/deep-repo", false, "url", "desc", "main"),
+        GitHubRepository(10, "download-failure-repo", "mock_user/download-failure-repo", false, "url", "desc", "main")
     )
 
     private val mockBranches = listOf(
@@ -44,7 +36,6 @@ class MockGitHubService : GitHubService, GitHubAuthService, GitHubSyncService {
     }
 
     override suspend fun authenticate(token: String): Boolean {
-        delay(500)
         authenticated = token.isNotBlank()
         return authenticated
     }
@@ -54,40 +45,33 @@ class MockGitHubService : GitHubService, GitHubAuthService, GitHubSyncService {
     }
 
     override suspend fun getUser(): GitHubUser? {
-        delay(300)
         return getAuthenticatedUser()
     }
 
     override suspend fun getRepositories(): List<GitHubRepository> {
-        delay(500)
         if (!authenticated) throw Exception("Not authenticated")
         return mockRepos
     }
 
     override suspend fun getBranches(owner: String, repo: String): List<GitHubBranch> {
-        delay(500)
         if (!authenticated) throw Exception("Not authenticated")
         return mockBranches
     }
 
     override suspend fun sync(projectId: String): SyncResult {
-        delay(1000)
         return SyncResult.Success
     }
 
     override suspend fun pull(projectId: String): SyncResult {
-        delay(1000)
         return SyncResult.Success
     }
 
     override suspend fun push(projectId: String, commitMessage: String): SyncResult {
-        delay(1000)
         return SyncResult.Success
     }
 
 
     override suspend fun getTree(owner: String, repo: String, treeSha: String): GitHubTree {
-        kotlinx.coroutines.delay(100)
         
         if (repo == "truncated-repo") {
             if (treeSha == "root") {
@@ -101,6 +85,57 @@ class MockGitHubService : GitHubService, GitHubAuthService, GitHubSyncService {
             }
         }
         
+
+        if (repo == "collision-repo") {
+            return GitHubTree("mock", "url", listOf(
+                GitHubTreeItem("src/main.kt", "100644", "blob", "main-sha", 100, "url"),
+                GitHubTreeItem("src", "100644", "blob", "main-sha", 100, "url")
+            ), false)
+        }
+
+        if (repo == "invalid-path-repo") {
+            return GitHubTree("mock", "url", listOf(
+                GitHubTreeItem("../secret", "100644", "blob", "main-sha", 100, "url")
+            ), false)
+        }
+
+        if (repo == "too-many-files-repo") {
+            val list = mutableListOf<GitHubTreeItem>()
+            for (i in 1..2001) {
+                list.add(GitHubTreeItem("file$i.txt", "100644", "blob", "main-sha", 10, "url"))
+            }
+            return GitHubTree("mock", "url", list, false)
+        }
+
+        if (repo == "oversized-total-repo") {
+            val list = mutableListOf<GitHubTreeItem>()
+            for (i in 1..11) {
+                list.add(GitHubTreeItem("large$i.bin", "100644", "blob", "main-sha", 10 * 1024 * 1024, "url"))
+            }
+            return GitHubTree("mock", "url", list, false)
+        }
+
+        if (repo == "deep-repo") {
+            if (treeSha.startsWith("depth-")) {
+                val d = treeSha.split("-")[1].toInt()
+                if (d > 22) {
+                    return GitHubTree("mock", "url", listOf(GitHubTreeItem("file", "100644", "blob", "main-sha", 10, "url")), false)
+                }
+                return GitHubTree("mock", "url", listOf(
+                    GitHubTreeItem("dir$d", "040000", "tree", "depth-${d+1}", null, "url")
+                ), true)
+            }
+            return GitHubTree("mock", "url", listOf(
+                GitHubTreeItem("dir0", "040000", "tree", "depth-1", null, "url")
+            ), true)
+        }
+
+        if (repo == "download-failure-repo") {
+            return GitHubTree("mock", "url", listOf(
+                GitHubTreeItem("fail.txt", "100644", "blob", "fail-sha", 100, "url")
+            ), false)
+        }
+
         if (repo == "oversized-repo") {
             return GitHubTree("mock", "url", listOf(
                 GitHubTreeItem("large.bin", "100644", "blob", "large-sha", 15 * 1024 * 1024, "url")
@@ -130,7 +165,10 @@ class MockGitHubService : GitHubService, GitHubAuthService, GitHubSyncService {
     }
 
     override suspend fun getBlob(owner: String, repo: String, fileSha: String): GitHubBlob {
-        kotlinx.coroutines.delay(100)
+
+        if (fileSha == "fail-sha") {
+            throw Exception("Network download failure")
+        }
         when (fileSha) {
             "icon-sha" -> return GitHubBlob("iVBORw0KGgo=", "base64", "icon-sha", 200) // binary fake
             "main-sha" -> return GitHubBlob("cHJpbnRsbigiaGVsbG8iKQ==", "base64", "main-sha", 150)

@@ -239,7 +239,8 @@ fun fetchRepositories() {
                     if (!normalizedPaths.add(path)) {
                         throw Exception("Duplicate path collision detected: $path")
                     }
-                    fileRepository.createStagingDirectory(stagingProjectId, path)
+                    val dirSuccess = fileRepository.createStagingDirectory(stagingProjectId, path)
+                    if (!dirSuccess) throw Exception("Directory/file collision or staging failure at $path")
                     
                     val name = path.substringAfterLast('/')
                     val parentPath = if (path.contains('/')) path.substringBeforeLast('/') else ""
@@ -284,7 +285,8 @@ fun fetchRepositories() {
                         bytes = blob.content.toByteArray(kotlin.text.Charsets.UTF_8)
                     }
                     
-                    fileRepository.writeStagingFileBytes(stagingProjectId, path, bytes)
+                    val writeSuccess = fileRepository.writeStagingFileBytes(stagingProjectId, path, bytes)
+                    if (!writeSuccess) throw Exception("Binary/download failure at $path")
                     
                     val name = path.substringAfterLast('/')
                     val extension = if (name.contains(".")) name.substringAfterLast('.') else ""
@@ -309,7 +311,7 @@ fun fetchRepositories() {
                 // Atomic replace
                 val replaceSuccess = fileRepository.replaceProjectWorkspace(projectId, stagingProjectId, newEntities)
                 if (!replaceSuccess) {
-                    throw Exception("Failed to atomically replace project workspace")
+                    throw Exception("Replacement failure or Room persistence failure")
                 }
                 
                 val config = com.example.data.GitHubConfigEntity(

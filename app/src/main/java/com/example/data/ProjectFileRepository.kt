@@ -184,13 +184,31 @@ class ProjectFileRepository(private val fileDao: ProjectFileDao, private val fil
     }
 
     suspend fun replaceProjectWorkspace(projectId: String, stagingProjectId: String, newFiles: List<ProjectFileEntity>): Boolean {
-        // Atomic-ish replacement
-        val success = fileSystem.replaceProject(projectId, stagingProjectId)
-        if (success) {
+        // Keep backup of room entities
+        val oldFiles = fileDao.getFilesForProject(projectId).firstOrNull() ?: emptyList()
+        
+        val fsSuccess = fileSystem.replaceProject(projectId, stagingProjectId)
+        if (!fsSuccess) {
+            return false
+        }
+        
+        try {
             fileDao.clearFilesForProject(projectId)
             fileDao.insertFiles(newFiles)
+            fileSystem.cleanupBackupProject(projectId)
             return true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            // Rollback Room
+            try {
+                fileDao.clearFilesForProject(projectId)
+                fileDao.insertFiles(oldFiles)
+            } catch (inner: Exception) {
+                inner.printStackTrace()
+            }
+            // Rollback FileSystem
+            fileSystem.restoreBackupProject(projectId)
+            return false
         }
-        return false
     }
 }
