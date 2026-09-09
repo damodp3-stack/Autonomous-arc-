@@ -57,3 +57,10 @@ The historical development record for Autonomous Arc.
 - Cloned trees retain original directory structures.
 - Safe base64 blob translation.
 - Configured UI flow for detecting and resolving existing-file conflicts via strict user confirmation.
+
+## [0.6.2] - GitHub Clone Hardening
+- Hardened clone flow with atomic staging workspace replacement.
+- Handled GitHub `truncated=true` recursive tree limitations via DFS fallback.
+- Introduced binary vs text file classification saving images/apks correctly.
+- Implemented safety guardrails preventing massive clone exhaustion (size/count caps).
+- Validated remote path inputs, filtering duplication and preventing directory traversal attacks.

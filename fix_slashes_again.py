@@ -2,12 +2,12 @@ with open('app/src/main/java/com/example/ui/GitHubViewModel.kt', 'r') as f:
     lines = f.readlines()
 
 for i, line in enumerate(lines):
-    if 'val cleanBase64 = blob.content.replace(' in line:
+    if 'replace("", "").replace("", "")' in line:
         lines[i] = '                        val cleanBase64 = blob.content.replace("\\n", "").replace("\\r", "")\n'
-    elif 'var path = item.path.replace(' in line:
-        lines[i] = '                    var path = item.path.replace("\\\\\\\\", "/")\n'
-    elif '", "")' in line:
-        lines[i] = ''
+    elif 'replace("\\\\", "/")' in line:
+        pass
+    elif 'replace("\\", "/")' in line:
+        lines[i] = line.replace('replace("\\", "/")', 'replace("\\\\\\\\", "/")') # \\\\ in source file
 
 with open('app/src/main/java/com/example/ui/GitHubViewModel.kt', 'w') as f:
     f.writelines(lines)

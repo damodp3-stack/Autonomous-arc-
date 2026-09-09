@@ -38,6 +38,9 @@ interface ProjectFileDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertFile(file: ProjectFileEntity)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertFiles(files: List<ProjectFileEntity>)
+
     @Update
     suspend fun updateFile(file: ProjectFileEntity)
 

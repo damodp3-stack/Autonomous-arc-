@@ -14,6 +14,36 @@ class ProjectFileRepository(private val fileDao: ProjectFileDao, private val fil
     suspend fun getFileByPath(projectId: String, path: String): ProjectFileEntity? =
         fileDao.getFileByPath(projectId, path)
 
+    suspend fun createFileWithBytes(
+        projectId: String,
+        path: String,
+        content: ByteArray,
+        isDirectory: Boolean = false
+    ): ProjectFileEntity? {
+        if (!isDirectory) {
+            val success = fileSystem.writeFileBytes(projectId, path, content)
+            if (!success) return null
+        } else {
+            val success = fileSystem.createDirectory(projectId, path)
+            if (!success) return null
+        }
+        
+        val name = path.substringAfterLast('/')
+        val extension = if (name.contains(".")) name.substringAfterLast('.') else ""
+        val parentPath = if (path.contains('/')) path.substringBeforeLast('/') else ""
+        val newFile = ProjectFileEntity(
+            projectId = projectId,
+            path = path,
+            name = name,
+            extension = extension,
+            content = "[BINARY FILE]", // Do not store binary in Room
+            isDirectory = isDirectory,
+            parentPath = parentPath
+        )
+        fileDao.insertFile(newFile)
+        return newFile
+    }
+
     suspend fun createFile(
         projectId: String,
         path: String,
@@ -136,8 +166,31 @@ class ProjectFileRepository(private val fileDao: ProjectFileDao, private val fil
         }
     }
 
+    suspend fun writeStagingFileBytes(stagingProjectId: String, path: String, content: ByteArray): Boolean {
+        return fileSystem.writeFileBytes(stagingProjectId, path, content)
+    }
+
+    suspend fun createStagingDirectory(stagingProjectId: String, path: String): Boolean {
+        return fileSystem.createDirectory(stagingProjectId, path)
+    }
+
+    suspend fun clearStagingProject(stagingProjectId: String) {
+        fileSystem.deleteProject(stagingProjectId)
+    }
+
     suspend fun clearFilesForProject(projectId: String) {
         fileSystem.deleteProject(projectId)
         fileDao.clearFilesForProject(projectId)
+    }
+
+    suspend fun replaceProjectWorkspace(projectId: String, stagingProjectId: String, newFiles: List<ProjectFileEntity>): Boolean {
+        // Atomic-ish replacement
+        val success = fileSystem.replaceProject(projectId, stagingProjectId)
+        if (success) {
+            fileDao.clearFilesForProject(projectId)
+            fileDao.insertFiles(newFiles)
+            return true
+        }
+        return false
     }
 }

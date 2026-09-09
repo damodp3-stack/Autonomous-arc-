@@ -53,6 +53,35 @@ class ProjectFileSystem(private val context: Context) {
         }
     }
 
+    fun writeFileBytes(projectId: String, path: String, content: ByteArray): Boolean {
+        return try {
+            val file = getProjectFile(projectId, path) ?: return false
+            if (file.exists() && file.isDirectory) return false
+            
+            file.parentFile?.mkdirs()
+            
+            val tempFile = java.io.File(file.parentFile, file.name + ".tmp_" + System.nanoTime())
+            tempFile.writeBytes(content)
+            
+            if (file.exists()) {
+                if (!file.delete()) {
+                    tempFile.delete()
+                    return false
+                }
+            }
+            
+            val success = tempFile.renameTo(file)
+            if (!success) {
+                tempFile.delete()
+                return false
+            }
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
     fun writeFile(projectId: String, path: String, content: String): Boolean {
         return try {
             val file = getProjectFile(projectId, path) ?: return false
@@ -133,5 +162,15 @@ class ProjectFileSystem(private val context: Context) {
             e.printStackTrace()
             false
         }
+    }
+    fun replaceProject(projectId: String, stagingProjectId: String): Boolean {
+        try {
+            val rootDir = java.io.File(context.filesDir, "projects")
+            val targetDir = java.io.File(rootDir, projectId)
+            val stagingDir = java.io.File(rootDir, stagingProjectId)
+            if (!stagingDir.exists()) return false
+            if (targetDir.exists()) { if (!targetDir.deleteRecursively()) return false }
+            return stagingDir.renameTo(targetDir)
+        } catch (e: Exception) { e.printStackTrace(); return false }
     }
 }
