@@ -25,7 +25,7 @@ Phase 4 — True Filesystem Workspace (Completed).
 
 **Pending**
 - Media/Ideas Vault.
-- GitHub Integration (Completed Clone Flow).
+- GitHub Integration (Clone, Commit, Push, Conflict Detection).
 - Cloud storage/Firebase.
 - Token/usage tracking.
 - APK/cloud builds.
@@ -44,6 +44,7 @@ Phase 4 — True Filesystem Workspace (Completed).
 - Apply Engine Validation, Conflict Detection, Snapshot, and Rollback (Verified).
 - **True Filesystem Workspace and synchronization (Verified with 100% test coverage).**
 - **GitHub Clone Engine with True Failure Safety (Verified with extensive edge-case tests).**
+- **GitHub Commit & Push Engine (Verified with test coverage for binary support and ref update safety).**
 
 **Current Architecture**
 - Android app using Kotlin, Jetpack Compose.

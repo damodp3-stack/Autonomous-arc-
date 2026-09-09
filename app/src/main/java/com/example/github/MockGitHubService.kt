@@ -58,6 +58,51 @@ class MockGitHubService : GitHubService, GitHubAuthService, GitHubSyncService {
         return mockBranches
     }
 
+
+    var lastCreatedTree: GitHubCreateTreeRequest? = null
+    var lastCreatedCommit: GitHubCreateCommitRequest? = null
+    var lastUpdatedRef: GitHubUpdateRefRequest? = null
+    var failNextRefUpdate = false
+    var blobCounter = 0
+    var currentRefSha = "abcdef123456"
+
+    override suspend fun getRef(owner: String, repo: String, branch: String): GitHubRef {
+        kotlinx.coroutines.delay(100)
+        return GitHubRef("refs/heads/$branch", "url", GitHubRefObject(currentRefSha, "commit", "url"))
+    }
+
+    override suspend fun createBlob(owner: String, repo: String, request: GitHubCreateBlobRequest): GitHubCreateBlobResponse {
+        kotlinx.coroutines.delay(100)
+        if (request.content == "fail-blob") throw Exception("Blob creation failed")
+        blobCounter++
+        return GitHubCreateBlobResponse("blob-sha-$blobCounter", "url")
+    }
+
+    override suspend fun createTree(owner: String, repo: String, request: GitHubCreateTreeRequest): GitHubCreateTreeResponse {
+        kotlinx.coroutines.delay(100)
+        if (request.tree.any { it.path == "fail-tree" }) throw Exception("Tree creation failed")
+        lastCreatedTree = request
+        return GitHubCreateTreeResponse("new-tree-sha", "url")
+    }
+
+    override suspend fun createCommit(owner: String, repo: String, request: GitHubCreateCommitRequest): GitHubCreateCommitResponse {
+        kotlinx.coroutines.delay(100)
+        if (request.message == "fail-commit") throw Exception("Commit creation failed")
+        lastCreatedCommit = request
+        return GitHubCreateCommitResponse("new-commit-sha", "url")
+    }
+
+    override suspend fun updateRef(owner: String, repo: String, branch: String, request: GitHubUpdateRefRequest): GitHubRef {
+        kotlinx.coroutines.delay(100)
+        if (failNextRefUpdate) {
+            failNextRefUpdate = false
+            throw Exception("Ref update failed")
+        }
+        lastUpdatedRef = request
+        currentRefSha = request.sha
+        return GitHubRef("refs/heads/$branch", "url", GitHubRefObject(request.sha, "commit", "url"))
+    }
+
     override suspend fun sync(projectId: String): SyncResult {
         return SyncResult.Success
     }
@@ -80,7 +125,7 @@ class MockGitHubService : GitHubService, GitHubAuthService, GitHubSyncService {
                 ), true)
             } else if (treeSha == "src-sha") {
                 return GitHubTree("mock", "url", listOf(
-                    GitHubTreeItem("main.kt", "100644", "blob", "main-sha", 100, "url")
+                    GitHubTreeItem("main.kt", "100644", "blob", "ae973bcd537de20e5993b49f7a406f38a8ad0c8e", 100, "url")
                 ), false)
             }
         }
@@ -88,21 +133,21 @@ class MockGitHubService : GitHubService, GitHubAuthService, GitHubSyncService {
 
         if (repo == "collision-repo") {
             return GitHubTree("mock", "url", listOf(
-                GitHubTreeItem("src/main.kt", "100644", "blob", "main-sha", 100, "url"),
-                GitHubTreeItem("src", "100644", "blob", "main-sha", 100, "url")
+                GitHubTreeItem("src/main.kt", "100644", "blob", "ae973bcd537de20e5993b49f7a406f38a8ad0c8e", 100, "url"),
+                GitHubTreeItem("src", "100644", "blob", "ae973bcd537de20e5993b49f7a406f38a8ad0c8e", 100, "url")
             ), false)
         }
 
         if (repo == "invalid-path-repo") {
             return GitHubTree("mock", "url", listOf(
-                GitHubTreeItem("../secret", "100644", "blob", "main-sha", 100, "url")
+                GitHubTreeItem("../secret", "100644", "blob", "ae973bcd537de20e5993b49f7a406f38a8ad0c8e", 100, "url")
             ), false)
         }
 
         if (repo == "too-many-files-repo") {
             val list = mutableListOf<GitHubTreeItem>()
             for (i in 1..2001) {
-                list.add(GitHubTreeItem("file$i.txt", "100644", "blob", "main-sha", 10, "url"))
+                list.add(GitHubTreeItem("file$i.txt", "100644", "blob", "ae973bcd537de20e5993b49f7a406f38a8ad0c8e", 10, "url"))
             }
             return GitHubTree("mock", "url", list, false)
         }
@@ -110,7 +155,7 @@ class MockGitHubService : GitHubService, GitHubAuthService, GitHubSyncService {
         if (repo == "oversized-total-repo") {
             val list = mutableListOf<GitHubTreeItem>()
             for (i in 1..11) {
-                list.add(GitHubTreeItem("large$i.bin", "100644", "blob", "main-sha", 10 * 1024 * 1024, "url"))
+                list.add(GitHubTreeItem("large$i.bin", "100644", "blob", "ae973bcd537de20e5993b49f7a406f38a8ad0c8e", 10 * 1024 * 1024, "url"))
             }
             return GitHubTree("mock", "url", list, false)
         }
@@ -119,7 +164,7 @@ class MockGitHubService : GitHubService, GitHubAuthService, GitHubSyncService {
             if (treeSha.startsWith("depth-")) {
                 val d = treeSha.split("-")[1].toInt()
                 if (d > 22) {
-                    return GitHubTree("mock", "url", listOf(GitHubTreeItem("file", "100644", "blob", "main-sha", 10, "url")), false)
+                    return GitHubTree("mock", "url", listOf(GitHubTreeItem("file", "100644", "blob", "ae973bcd537de20e5993b49f7a406f38a8ad0c8e", 10, "url")), false)
                 }
                 return GitHubTree("mock", "url", listOf(
                     GitHubTreeItem("dir$d", "040000", "tree", "depth-${d+1}", null, "url")
@@ -144,8 +189,8 @@ class MockGitHubService : GitHubService, GitHubAuthService, GitHubSyncService {
         
         if (repo == "duplicate-repo") {
             return GitHubTree("mock", "url", listOf(
-                GitHubTreeItem("src/main.kt", "100644", "blob", "main-sha", 100, "url"),
-                GitHubTreeItem("src//main.kt", "100644", "blob", "main-sha", 100, "url")
+                GitHubTreeItem("src/main.kt", "100644", "blob", "ae973bcd537de20e5993b49f7a406f38a8ad0c8e", 100, "url"),
+                GitHubTreeItem("src//main.kt", "100644", "blob", "ae973bcd537de20e5993b49f7a406f38a8ad0c8e", 100, "url")
             ), false)
         }
 
@@ -154,11 +199,11 @@ class MockGitHubService : GitHubService, GitHubAuthService, GitHubSyncService {
             sha = "mock-tree-sha",
             url = "url",
             tree = listOf(
-                GitHubTreeItem("README.md", "100644", "blob", "readme-sha", 100, "url"),
+                GitHubTreeItem("README.md", "100644", "blob", "1eb1f61f661d2df336885bc0b21fc58f90483889", 100, "url"),
                 GitHubTreeItem("src", "040000", "tree", "src-sha", null, "url"),
-                GitHubTreeItem("src/main.kt", "100644", "blob", "main-sha", 150, "url"),
+                GitHubTreeItem("src/main.kt", "100644", "blob", "ae973bcd537de20e5993b49f7a406f38a8ad0c8e", 150, "url"),
                 GitHubTreeItem("assets", "040000", "tree", "assets-sha", null, "url"),
-                GitHubTreeItem("assets/icon.png", "100644", "blob", "icon-sha", 200, "url")
+                GitHubTreeItem("assets/icon.png", "100644", "blob", "0dd1608e45a9c4d35bfc1e6f266a796364aa8754", 200, "url")
             ),
             truncated = false
         )
@@ -170,9 +215,9 @@ class MockGitHubService : GitHubService, GitHubAuthService, GitHubSyncService {
             throw Exception("Network download failure")
         }
         when (fileSha) {
-            "icon-sha" -> return GitHubBlob("iVBORw0KGgo=", "base64", "icon-sha", 200) // binary fake
-            "main-sha" -> return GitHubBlob("cHJpbnRsbigiaGVsbG8iKQ==", "base64", "main-sha", 150)
-            "readme-sha" -> return GitHubBlob("IyBNb2NrIFJlcG8KCk1vY2sgY29udGVudA==", "base64", "readme-sha", 100)
+            "0dd1608e45a9c4d35bfc1e6f266a796364aa8754" -> return GitHubBlob("iVBORw0KGgo=", "base64", "0dd1608e45a9c4d35bfc1e6f266a796364aa8754", 200) // binary fake
+            "ae973bcd537de20e5993b49f7a406f38a8ad0c8e" -> return GitHubBlob("cHJpbnRsbigiaGVsbG8iKQ==", "base64", "ae973bcd537de20e5993b49f7a406f38a8ad0c8e", 150)
+            "1eb1f61f661d2df336885bc0b21fc58f90483889" -> return GitHubBlob("IyBNb2NrIFJlcG8KCk1vY2sgY29udGVudA==", "base64", "1eb1f61f661d2df336885bc0b21fc58f90483889", 100)
             "large-sha" -> return GitHubBlob("", "base64", "large-sha", 15 * 1024 * 1024)
             else -> return GitHubBlob("ZGVmYXVsdA==", "base64", fileSha, 100)
         }

@@ -74,6 +74,26 @@ class RealGitHubServices(
         return api.getBlob(getAuthHeader(), owner, repo, fileSha)
     }
 
+    override suspend fun getRef(owner: String, repo: String, branch: String): GitHubRef {
+        return api.getRef(getAuthHeader(), owner, repo, branch)
+    }
+
+    override suspend fun createBlob(owner: String, repo: String, request: GitHubCreateBlobRequest): GitHubCreateBlobResponse {
+        return api.createBlob(getAuthHeader(), owner, repo, request)
+    }
+
+    override suspend fun createTree(owner: String, repo: String, request: GitHubCreateTreeRequest): GitHubCreateTreeResponse {
+        return api.createTree(getAuthHeader(), owner, repo, request)
+    }
+
+    override suspend fun createCommit(owner: String, repo: String, request: GitHubCreateCommitRequest): GitHubCreateCommitResponse {
+        return api.createCommit(getAuthHeader(), owner, repo, request)
+    }
+
+    override suspend fun updateRef(owner: String, repo: String, branch: String, request: GitHubUpdateRefRequest): GitHubRef {
+        return api.updateRef(getAuthHeader(), owner, repo, branch, request)
+    }
+
     override suspend fun sync(projectId: String): SyncResult {
         // Foundation: We just return success for now as actual file sync is out of scope
         return SyncResult.Success

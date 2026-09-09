@@ -9,6 +9,11 @@ interface GitHubService {
     suspend fun getBranches(owner: String, repo: String): List<GitHubBranch>
     suspend fun getTree(owner: String, repo: String, treeSha: String): GitHubTree
     suspend fun getBlob(owner: String, repo: String, fileSha: String): GitHubBlob
+    suspend fun getRef(owner: String, repo: String, branch: String): GitHubRef
+    suspend fun createBlob(owner: String, repo: String, request: GitHubCreateBlobRequest): GitHubCreateBlobResponse
+    suspend fun createTree(owner: String, repo: String, request: GitHubCreateTreeRequest): GitHubCreateTreeResponse
+    suspend fun createCommit(owner: String, repo: String, request: GitHubCreateCommitRequest): GitHubCreateCommitResponse
+    suspend fun updateRef(owner: String, repo: String, branch: String, request: GitHubUpdateRefRequest): GitHubRef
 }
 
 /**

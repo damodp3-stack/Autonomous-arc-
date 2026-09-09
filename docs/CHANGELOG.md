@@ -58,6 +58,15 @@ The historical development record for Autonomous Arc.
 - Safe base64 blob translation.
 - Configured UI flow for detecting and resolving existing-file conflicts via strict user confirmation.
 
+## [0.6.3] - GitHub Commit & Push Engine
+- Implemented robust `detectChanges` logic computing true local vs. remote SHAs (blob size + content matching).
+- Added binary file support via base64 for Blob APIs and `calculateGitSha`.
+- Added branch conflict validation protecting against remote-changed overwrites (`lastRemoteSha`).
+- Introduced explicit `CommitSummary` and `FileChange` model displaying modifications, additions, and deletions for human review.
+- Added GitHub Tree and Commit creation endpoints.
+- Added strict empty commit message and empty change handling.
+- Verified via 11-test suite covering simultaneous changes, binary edits, error fallbacks, and branch integrity.
+
 ## [0.6.2] - GitHub Clone Hardening
 - Hardened clone flow with atomic staging workspace replacement and rollback support.
 - Implemented TRUE FAILURE SAFETY: guaranteed isolation on clone failures (e.g. download errors, staging errors) preserving original user workspace.

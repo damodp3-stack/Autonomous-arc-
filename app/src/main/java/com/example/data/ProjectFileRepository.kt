@@ -3,7 +3,7 @@ package com.example.data
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.firstOrNull
 
-class ProjectFileRepository(private val fileDao: ProjectFileDao, private val fileSystem: ProjectFileSystem) {
+class ProjectFileRepository(private val fileDao: ProjectFileDao, val fileSystem: ProjectFileSystem) {
     
     fun getFilesForProject(projectId: String): Flow<List<ProjectFileEntity>> =
         fileDao.getFilesForProject(projectId)
