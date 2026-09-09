@@ -51,3 +51,9 @@ The historical development record for Autonomous Arc.
 - Implemented real GitHub authentication and API client using Retrofit/Moshi.
 - Added repository and branch selection to GitHub dialog.
 - Implemented secure local state configuration (persisting connected project config).
+
+## [0.6.1] - GitHub Repository Clone (File Sync)
+- Implemented full remote repository cloning directly to the local Android app-private filesystem.
+- Cloned trees retain original directory structures.
+- Safe base64 blob translation.
+- Configured UI flow for detecting and resolving existing-file conflicts via strict user confirmation.

@@ -63,7 +63,7 @@ class WorkspaceViewModel(
     val projectId: String,
     private val messageRepository: MessageRepository,
     private val projectRepository: ProjectRepository,
-    private val fileRepository: ProjectFileRepository,
+    val fileRepository: ProjectFileRepository,
     private val providers: Map<String, AIProvider>
 ) : ViewModel() {
 
@@ -308,7 +308,7 @@ class WorkspaceViewModelFactory(
     val projectId: String,
     private val messageRepository: MessageRepository,
     private val projectRepository: ProjectRepository,
-    private val fileRepository: ProjectFileRepository,
+    val fileRepository: ProjectFileRepository,
     private val providers: Map<String, AIProvider>
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {

@@ -7,6 +7,8 @@ interface GitHubService {
     suspend fun getUser(): GitHubUser?
     suspend fun getRepositories(): List<GitHubRepository>
     suspend fun getBranches(owner: String, repo: String): List<GitHubBranch>
+    suspend fun getTree(owner: String, repo: String, treeSha: String): GitHubTree
+    suspend fun getBlob(owner: String, repo: String, fileSha: String): GitHubBlob
 }
 
 /**

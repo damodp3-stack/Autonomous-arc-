@@ -66,6 +66,14 @@ class RealGitHubServices(
         return api.getBranches(getAuthHeader(), owner, repo)
     }
 
+    override suspend fun getTree(owner: String, repo: String, treeSha: String): GitHubTree {
+        return api.getTree(getAuthHeader(), owner, repo, treeSha)
+    }
+
+    override suspend fun getBlob(owner: String, repo: String, fileSha: String): GitHubBlob {
+        return api.getBlob(getAuthHeader(), owner, repo, fileSha)
+    }
+
     override suspend fun sync(projectId: String): SyncResult {
         // Foundation: We just return success for now as actual file sync is out of scope
         return SyncResult.Success

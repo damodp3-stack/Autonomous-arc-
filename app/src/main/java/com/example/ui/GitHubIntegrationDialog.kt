@@ -93,7 +93,7 @@ fun GitHubIntegrationDialog(
                                             onFetch = { viewModel.fetchRepositories() },
                                             onSelectRepository = { repo -> viewModel.selectRepository(repo) },
                                             onSelectBranch = { branch -> viewModel.selectBranch(branch) },
-                                            onConnect = { viewModel.connectRepository() }
+                                            onConnect = { force -> viewModel.connectRepository(force) }
                                         )
                                     }
                                     is GitHubProjectState.Connected -> {
@@ -153,7 +153,7 @@ fun RepositoryDiscoveryView(
     onFetch: () -> Unit,
     onSelectRepository: (com.example.github.GitHubRepository) -> Unit,
     onSelectBranch: (com.example.github.GitHubBranch) -> Unit,
-    onConnect: () -> Unit
+    onConnect: (Boolean) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         Text("Connect a Repository", style = MaterialTheme.typography.titleMedium)
@@ -165,9 +165,39 @@ fun RepositoryDiscoveryView(
                     Text("Load Repositories")
                 }
             }
+
             is RepositoryDiscoveryState.LoadingRepositories, is RepositoryDiscoveryState.LoadingBranches, is RepositoryDiscoveryState.Connecting -> {
                 Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator()
+                }
+            }
+            is RepositoryDiscoveryState.Cloning -> {
+                Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                    CircularProgressIndicator()
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(discoveryState.progress)
+                }
+            }
+            is RepositoryDiscoveryState.Conflict -> {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text("Existing Files Detected", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.titleMedium)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("This project already contains files. Cloning a repository will completely wipe the existing files in this project and replace them with the remote repository contents.")
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(
+                        onClick = { onConnect(true) },
+                        colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Wipe Files and Clone")
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = onFetch, // Go back to repository list (or could cancel)
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Cancel")
+                    }
                 }
             }
             is RepositoryDiscoveryState.Error -> {
@@ -221,7 +251,7 @@ fun RepositoryDiscoveryView(
                 }
                 Spacer(modifier = Modifier.height(16.dp))
                 Button(
-                    onClick = onConnect,
+                    onClick = { onConnect(false) },
                     enabled = discoveryState.selectedBranch != null,
                     modifier = Modifier.fillMaxWidth()
                 ) {

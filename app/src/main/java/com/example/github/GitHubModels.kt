@@ -33,3 +33,29 @@ data class GitHubCommitBase(
     val sha: String,
     val url: String
 )
+
+@JsonClass(generateAdapter = true)
+data class GitHubTree(
+    val sha: String,
+    val url: String,
+    val tree: List<GitHubTreeItem>,
+    val truncated: Boolean
+)
+
+@JsonClass(generateAdapter = true)
+data class GitHubTreeItem(
+    val path: String,
+    val mode: String,
+    val type: String,
+    val sha: String,
+    val size: Long? = null,
+    val url: String
+)
+
+@JsonClass(generateAdapter = true)
+data class GitHubBlob(
+    val content: String,
+    val encoding: String,
+    val sha: String,
+    val size: Long
+)

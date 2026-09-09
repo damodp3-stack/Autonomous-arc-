@@ -3,118 +3,53 @@ import re
 with open('app/src/main/java/com/example/ui/GitHubIntegrationDialog.kt', 'r') as f:
     content = f.read()
 
-# First, fix imports if necessary
-if 'import com.example.github.GitHubBranch' not in content:
-    content = content.replace('import com.example.github.GitHubRepository', 'import com.example.github.GitHubRepository\nimport com.example.github.GitHubBranch')
+# Make sure connectRepository allows force parameter
+content = content.replace('onConnect: () -> Unit', 'onConnect: (Boolean) -> Unit')
+content = content.replace('onConnect = { viewModel.connectRepository() }', 'onConnect = { force -> viewModel.connectRepository(force) }')
+content = content.replace('onConnect = { viewModel.connectRepository(it) }', 'onConnect = { force -> viewModel.connectRepository(force) }')
 
-if 'import androidx.compose.material.icons.filled.ArrowBack' not in content:
-    content = content.replace('import androidx.compose.material.icons.filled.Close', 'import androidx.compose.material.icons.filled.Close\nimport androidx.compose.material.icons.filled.ArrowBack')
-
-if 'import androidx.compose.material3.RadioButton' not in content:
-    content = content.replace('import androidx.compose.material3.TextButton', 'import androidx.compose.material3.TextButton\nimport androidx.compose.material3.RadioButton')
-
-# Fix discovery state matching
-discovery_view = """
-@Composable
-fun RepositoryDiscoveryView(
-    discoveryState: RepositoryDiscoveryState,
-    onFetch: () -> Unit,
-    onSelectRepository: (GitHubRepository) -> Unit,
-    onSelectBranch: (GitHubBranch) -> Unit,
-    onConnect: () -> Unit
-) {
-    Column(modifier = Modifier.fillMaxSize()) {
-        Text("Connect a Repository", style = MaterialTheme.typography.titleMedium)
-        Spacer(modifier = Modifier.height(16.dp))
-
-        when (discoveryState) {
-            is RepositoryDiscoveryState.Idle -> {
-                Button(onClick = onFetch, modifier = Modifier.fillMaxWidth()) {
-                    Text("Load Repositories")
-                }
-            }
+replacement = """
             is RepositoryDiscoveryState.LoadingRepositories, is RepositoryDiscoveryState.LoadingBranches, is RepositoryDiscoveryState.Connecting -> {
                 Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator()
                 }
             }
-            is RepositoryDiscoveryState.Error -> {
-                Text(discoveryState.message, color = MaterialTheme.colorScheme.error)
-                Spacer(modifier = Modifier.height(8.dp))
-                Button(onClick = onFetch, modifier = Modifier.fillMaxWidth()) {
-                    Text("Retry")
+            is RepositoryDiscoveryState.Cloning -> {
+                Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                    CircularProgressIndicator()
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(discoveryState.progress)
                 }
             }
-            is RepositoryDiscoveryState.RepositoriesLoaded -> {
-                LazyColumn {
-                    items(discoveryState.repositories) { repo ->
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp)
-                                .clickable { onSelectRepository(repo) }
-                        ) {
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                Text(repo.fullName, fontWeight = FontWeight.Bold)
-                                if (repo.description != null) {
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(repo.description, style = MaterialTheme.typography.bodySmall)
-                                }
-                            }
-                        }
+            is RepositoryDiscoveryState.Conflict -> {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text("Existing Files Detected", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.titleMedium)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("This project already contains files. Cloning a repository will completely wipe the existing files in this project and replace them with the remote repository contents.")
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(
+                        onClick = { onConnect(true) },
+                        colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Wipe Files and Clone")
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = onFetch, // Go back to repository list (or could cancel)
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Cancel")
                     }
                 }
             }
-            is RepositoryDiscoveryState.BranchesLoaded -> {
-                Text("Repository: ${discoveryState.repository.fullName}", fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(8.dp))
-                Text("Select Branch", style = MaterialTheme.typography.titleSmall)
-                LazyColumn(modifier = Modifier.weight(1f)) {
-                    items(discoveryState.branches) { branch ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onSelectBranch(branch) }
-                                .padding(vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            RadioButton(
-                                selected = branch == discoveryState.selectedBranch,
-                                onClick = { onSelectBranch(branch) }
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(branch.name)
-                        }
-                    }
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-                Button(
-                    onClick = onConnect,
-                    enabled = discoveryState.selectedBranch != null,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Connect")
-                }
-            }
-        }
-    }
-}
 """
 
-content = re.sub(r'@Composable\nfun RepositoryDiscoveryView.*?(?=@Composable\nfun ConnectedProjectView)', discovery_view, content, flags=re.DOTALL)
+content = re.sub(r'            is RepositoryDiscoveryState.LoadingRepositories.*?(?=            is RepositoryDiscoveryState.Error -> \{)', replacement, content, flags=re.DOTALL)
 
-call_site_replacement = """
-                                        RepositoryDiscoveryView(
-                                            discoveryState = discoveryState,
-                                            onFetch = { viewModel.fetchRepositories() },
-                                            onSelectRepository = { repo -> viewModel.selectRepository(repo) },
-                                            onSelectBranch = { branch -> viewModel.selectBranch(branch) },
-                                            onConnect = { viewModel.connectRepository() }
-                                        )
-"""
-
-content = re.sub(r'                                        RepositoryDiscoveryView\(.*?onConnect = \{ repo -> viewModel\.connectRepository\(repo\) \}\n                                        \)', call_site_replacement.strip('\n'), content, flags=re.DOTALL)
-
+content = content.replace('onClick = onConnect,', 'onClick = { onConnect(false) },')
+# Just to make sure it doesn't duplicate we use exact replacement on the connect button:
+content = content.replace('onClick = { onConnect(false) }(false)', 'onClick = { onConnect(false) }') # safety
 
 with open('app/src/main/java/com/example/ui/GitHubIntegrationDialog.kt', 'w') as f:
     f.write(content)

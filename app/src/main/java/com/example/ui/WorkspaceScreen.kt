@@ -828,10 +828,11 @@ fun WorkspaceScreen(viewModel: WorkspaceViewModel, onBack: () -> Unit) {
             factory = object : androidx.lifecycle.ViewModelProvider.Factory {
                 override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
                     return com.example.ui.GitHubViewModel(
-                        projectId = viewModel.projectId, // We must have viewModel in scope here
+                        projectId = viewModel.projectId,
                         authService = gitHubServices,
                         githubService = gitHubServices,
-                        configRepository = com.example.data.GitHubConfigRepository(db.githubConfigDao())
+                        configRepository = com.example.data.GitHubConfigRepository(db.githubConfigDao()),
+                        fileRepository = viewModel.fileRepository
                     ) as T
                 }
             }

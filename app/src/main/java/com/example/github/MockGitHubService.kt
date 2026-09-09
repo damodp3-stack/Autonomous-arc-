@@ -84,4 +84,28 @@ class MockGitHubService : GitHubService, GitHubAuthService, GitHubSyncService {
         delay(1000)
         return SyncResult.Success
     }
+
+
+    override suspend fun getTree(owner: String, repo: String, treeSha: String): GitHubTree {
+        kotlinx.coroutines.delay(500)
+        return GitHubTree(
+            sha = "mock-tree-sha",
+            url = "url",
+            truncated = false,
+            tree = listOf(
+                GitHubTreeItem("README.md", "100644", "blob", "mock-blob-sha", 100, "url")
+            )
+        )
+    }
+
+    override suspend fun getBlob(owner: String, repo: String, fileSha: String): GitHubBlob {
+        kotlinx.coroutines.delay(500)
+        return GitHubBlob(
+            content = "IyBNb2NrIFJlcG8KCk1vY2sgY29udGVudA==", // "# Mock Repo\n\nMock content" base64
+            encoding = "base64",
+            sha = "mock-blob-sha",
+            size = 100
+        )
+    }
+
 }
