@@ -60,7 +60,7 @@ enum class ProposalState {
 }
 
 class WorkspaceViewModel(
-    private val projectId: String,
+    val projectId: String,
     private val messageRepository: MessageRepository,
     private val projectRepository: ProjectRepository,
     private val fileRepository: ProjectFileRepository,
@@ -305,7 +305,7 @@ class WorkspaceViewModel(
 }
 
 class WorkspaceViewModelFactory(
-    private val projectId: String,
+    val projectId: String,
     private val messageRepository: MessageRepository,
     private val projectRepository: ProjectRepository,
     private val fileRepository: ProjectFileRepository,

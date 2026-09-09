@@ -1,26 +1,21 @@
 package com.example.data
 
-
-
 import android.content.Context
-
-
-
 import androidx.room.Database
-
-
-
 import androidx.room.Room
-
-
-
 import androidx.room.RoomDatabase
 
-@Database(entities = [MessageEntity::class, ProjectEntity::class, ProjectFileEntity::class], version = 3, exportSchema = false)
+@Database(entities = [
+    MessageEntity::class, 
+    ProjectEntity::class, 
+    ProjectFileEntity::class, 
+    GitHubConfigEntity::class
+], version = 4, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun messageDao(): MessageDao
     abstract fun projectDao(): ProjectDao
     abstract fun projectFileDao(): ProjectFileDao
+    abstract fun githubConfigDao(): GitHubConfigDao
 
     companion object {
         @Volatile

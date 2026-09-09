@@ -1,0 +1,50 @@
+--- app/src/main/java/com/example/ui/WorkspaceScreen.kt
++++ app/src/main/java/com/example/ui/WorkspaceScreen.kt
+@@ -19,6 +19,7 @@
+ import androidx.compose.material.icons.automirrored.filled.Send
+ import androidx.compose.material.icons.filled.Add
+ import androidx.compose.material.icons.filled.Close
++import androidx.compose.material.icons.filled.CloudQueue
+ import androidx.compose.material.icons.filled.Delete
+ import androidx.compose.material.icons.filled.KeyboardArrowDown
+ import androidx.compose.material.icons.filled.KeyboardArrowUp
+@@ -198,6 +199,10 @@
+         }
+     }
+ 
++    // GitHub Integration Dialog state
++    var showGitHubDialog by remember { mutableStateOf(false) }
++    val githubViewModel = androidx.lifecycle.viewmodel.compose.viewModel<GitHubViewModel>(factory = com.example.ui.ViewModelFactory(projectId))
++
+     ModalNavigationDrawer(
+         drawerState = drawerState,
+         gesturesEnabled = !isEditorOpen,
+@@ -295,6 +300,14 @@
+                         var providerMenuExpanded by remember { mutableStateOf(false) }
+ 
+                         Box {
++                            IconButton(onClick = { showGitHubDialog = true }) {
++                                Icon(
++                                    imageVector = Icons.Default.CloudQueue,
++                                    contentDescription = "GitHub",
++                                    tint = MaterialTheme.colorScheme.onSurface
++                                )
++                            }
++
+                             TextButton(onClick = { providerMenuExpanded = true }) {
+                                 Text(selectedProvider)
+                             }
+@@ -750,6 +763,13 @@
+             }
+         }
+     }
++    
++    if (showGitHubDialog) {
++        GitHubIntegrationDialog(
++            viewModel = githubViewModel,
++            onDismiss = { showGitHubDialog = false }
++        )
++    }
+ }
+ 
+ @Composable

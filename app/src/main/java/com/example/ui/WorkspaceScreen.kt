@@ -128,6 +128,7 @@ import androidx.compose.material.icons.filled.Save
 
 
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CloudQueue
 
 
 
@@ -223,6 +224,7 @@ fun WorkspaceScreen(viewModel: WorkspaceViewModel, onBack: () -> Unit) {
     val projectName by viewModel.projectName.collectAsStateWithLifecycle()
     val isBuilding by viewModel.isBuilding.collectAsStateWithLifecycle()
     val files by viewModel.files.collectAsStateWithLifecycle()
+    var showGitHubDialog by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     val selectedFile by viewModel.selectedFile.collectAsStateWithLifecycle()
     val editorContent by viewModel.editorContent.collectAsStateWithLifecycle()
     
@@ -293,6 +295,14 @@ fun WorkspaceScreen(viewModel: WorkspaceViewModel, onBack: () -> Unit) {
                         val availableProviders = viewModel.availableProviders
                         val selectedProvider by viewModel.selectedProvider.collectAsStateWithLifecycle()
                         var providerMenuExpanded by remember { mutableStateOf(false) }
+
+                        IconButton(onClick = { showGitHubDialog = true }) {
+                            Icon(
+                                imageVector = Icons.Default.CloudQueue,
+                                contentDescription = "GitHub Integration",
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
 
                         Box {
                             TextButton(onClick = { providerMenuExpanded = true }) {
@@ -807,10 +817,36 @@ fun WorkspaceScreen(viewModel: WorkspaceViewModel, onBack: () -> Unit) {
             }
         )
     }
+
+    if (showGitHubDialog) {
+        val context = androidx.compose.ui.platform.LocalContext.current
+        val db = androidx.compose.runtime.remember { com.example.data.AppDatabase.getDatabase(context) }
+        val tokenManager = androidx.compose.runtime.remember { com.example.github.SimpleTokenManager(context) }
+        val gitHubServices = androidx.compose.runtime.remember { com.example.github.RealGitHubServices(tokenManager) }
+        
+        val githubViewModel = androidx.lifecycle.viewmodel.compose.viewModel<com.example.ui.GitHubViewModel>(
+            factory = object : androidx.lifecycle.ViewModelProvider.Factory {
+                override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
+                    return com.example.ui.GitHubViewModel(
+                        projectId = viewModel.projectId, // We must have viewModel in scope here
+                        authService = gitHubServices,
+                        githubService = gitHubServices,
+                        configRepository = com.example.data.GitHubConfigRepository(db.githubConfigDao())
+                    ) as T
+                }
+            }
+        )
+        
+        com.example.ui.GitHubIntegrationDialog(
+            viewModel = githubViewModel,
+            onDismiss = { showGitHubDialog = false }
+        )
+    }
 }
 
 @Composable
 fun FileExplorerContent(
+
     files: List<ProjectFileEntity>,
     onFileSelected: (ProjectFileEntity) -> Unit,
     onNewFileClick: () -> Unit,
@@ -888,9 +924,9 @@ fun FileExplorerContent(
             }
         }
     }
+    
 }
-
-@Composable
+    @Composable
 fun MessageBubble(message: MessageEntity, onReviewProposal: (() -> Unit)? = null) {
     val isUser = message.isUser
     val alignment = if (isUser) Alignment.CenterEnd else Alignment.CenterStart
