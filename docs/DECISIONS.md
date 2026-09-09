@@ -34,3 +34,7 @@ Maintain important architectural and product decisions.
 **Reason:** [Why this decision was made]
 **Alternatives considered:** [What else was evaluated]
 **Impact:** [How this affects the project]
+
+
+## Authentication Security
+Tokens are stored locally using standard `SharedPreferences` (wrapped by `TokenManager`) rather than being persisted into Room or the main project database. No client secrets are hardcoded in the app for GitHub integration. We use Personal Access Tokens for initial implementation flexibility.

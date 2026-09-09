@@ -8,10 +8,10 @@ interface GitHubApi {
     @GET("user")
     suspend fun getUser(@Header("Authorization") auth: String): GitHubUser
 
-    @GET("user/repos?sort=updated")
+    @GET("user/repos?sort=updated&per_page=100")
     suspend fun getRepositories(@Header("Authorization") auth: String): List<GitHubRepository>
 
-    @GET("repos/{owner}/{repo}/branches")
+    @GET("repos/{owner}/{repo}/branches?per_page=100")
     suspend fun getBranches(
         @Header("Authorization") auth: String,
         @Path("owner") owner: String,

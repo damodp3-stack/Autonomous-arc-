@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -90,14 +91,17 @@ fun GitHubIntegrationDialog(
                                         RepositoryDiscoveryView(
                                             discoveryState = discoveryState,
                                             onFetch = { viewModel.fetchRepositories() },
-                                            onConnect = { repo -> viewModel.connectRepository(repo) }
+                                            onSelectRepository = { repo -> viewModel.selectRepository(repo) },
+                                            onSelectBranch = { branch -> viewModel.selectBranch(branch) },
+                                            onConnect = { viewModel.connectRepository() }
                                         )
                                     }
                                     is GitHubProjectState.Connected -> {
                                         ConnectedProjectView(
                                             config = projState.config,
                                             onDisconnect = { viewModel.disconnectRepository() },
-                                            onSync = { /* Sync Foundation */ }
+                                            onSync = { /* Sync Foundation */ },
+                                            onChangeRepository = { viewModel.disconnectRepository() }
                                         )
                                     }
                                     is GitHubProjectState.Error -> {
@@ -142,11 +146,14 @@ fun AuthenticationView(onAuthenticate: (String) -> Unit) {
     }
 }
 
+
 @Composable
 fun RepositoryDiscoveryView(
     discoveryState: RepositoryDiscoveryState,
     onFetch: () -> Unit,
-    onConnect: (com.example.github.GitHubRepository) -> Unit
+    onSelectRepository: (com.example.github.GitHubRepository) -> Unit,
+    onSelectBranch: (com.example.github.GitHubBranch) -> Unit,
+    onConnect: () -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         Text("Connect a Repository", style = MaterialTheme.typography.titleMedium)
@@ -158,7 +165,7 @@ fun RepositoryDiscoveryView(
                     Text("Load Repositories")
                 }
             }
-            is RepositoryDiscoveryState.Loading -> {
+            is RepositoryDiscoveryState.LoadingRepositories, is RepositoryDiscoveryState.LoadingBranches, is RepositoryDiscoveryState.Connecting -> {
                 Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator()
                 }
@@ -170,14 +177,14 @@ fun RepositoryDiscoveryView(
                     Text("Retry")
                 }
             }
-            is RepositoryDiscoveryState.Success -> {
+            is RepositoryDiscoveryState.RepositoriesLoaded -> {
                 LazyColumn {
                     items(discoveryState.repositories) { repo ->
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(vertical = 4.dp)
-                                .clickable { onConnect(repo) }
+                                .clickable { onSelectRepository(repo) }
                         ) {
                             Column(modifier = Modifier.padding(16.dp)) {
                                 Text(repo.fullName, fontWeight = FontWeight.Bold)
@@ -190,27 +197,58 @@ fun RepositoryDiscoveryView(
                     }
                 }
             }
+            is RepositoryDiscoveryState.BranchesLoaded -> {
+                Text("Repository: ${discoveryState.repository.fullName}", fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(8.dp))
+                Text("Select Branch", style = MaterialTheme.typography.titleSmall)
+                LazyColumn(modifier = Modifier.weight(1f)) {
+                    items(discoveryState.branches) { branch ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onSelectBranch(branch) }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = branch == discoveryState.selectedBranch,
+                                onClick = { onSelectBranch(branch) }
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(branch.name)
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+                Button(
+                    onClick = onConnect,
+                    enabled = discoveryState.selectedBranch != null,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Connect")
+                }
+            }
         }
     }
 }
-
 @Composable
 fun ConnectedProjectView(
     config: com.example.data.GitHubConfigEntity,
     onDisconnect: () -> Unit,
-    onSync: () -> Unit
+    onSync: () -> Unit,
+    onChangeRepository: () -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
-        Text("Connected Repository", style = MaterialTheme.typography.titleMedium)
+        Text("● Connected", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
         Spacer(modifier = Modifier.height(16.dp))
         
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text("Repository: ${config.owner}/${config.repository}")
+                Text("Repository:", fontWeight = FontWeight.Bold)
+                Text("${config.owner}/${config.repository}")
                 Spacer(modifier = Modifier.height(8.dp))
-                Text("Branch: ${config.branch}")
-                Spacer(modifier = Modifier.height(8.dp))
-                Text("Status: Up to date (Foundation Only)")
+                Text("Branch:", fontWeight = FontWeight.Bold)
+                Text(config.branch)
             }
         }
         
@@ -218,13 +256,16 @@ fun ConnectedProjectView(
         
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.SpaceEvenly
         ) {
+            OutlinedButton(onClick = onSync) {
+                Text("Refresh")
+            }
+            OutlinedButton(onClick = onChangeRepository) {
+                Text("Change Repository")
+            }
             OutlinedButton(onClick = onDisconnect) {
                 Text("Disconnect")
-            }
-            Button(onClick = onSync) {
-                Text("Sync")
             }
         }
     }

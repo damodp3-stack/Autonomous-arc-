@@ -24,7 +24,8 @@
 - [ ] Pending: API key management, token/usage tracking, multiple AI provider integrations.
 
 **Phase 6 — GitHub Integration**
-- [ ] Pending: Repo cloning, committing, syncing.
+- [x] Completed: GitHub Integration Foundation (Authentication, Repository Discovery, Branch Selection, Project Connection, Isolation).
+- [ ] Pending: Repo cloning, committing, pushing, syncing.
 
 **Phase 7 — Build & Preview**
 - [ ] Pending: APK/cloud builds, app preview testing.

@@ -8,6 +8,7 @@ import com.example.github.GitHubAuthService
 import com.example.github.GitHubRepository
 import com.example.github.GitHubService
 import com.example.github.GitHubUser
+import com.example.github.GitHubBranch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -28,8 +29,11 @@ sealed class GitHubProjectState {
 
 sealed class RepositoryDiscoveryState {
     object Idle : RepositoryDiscoveryState()
-    object Loading : RepositoryDiscoveryState()
-    data class Success(val repositories: List<GitHubRepository>) : RepositoryDiscoveryState()
+    object LoadingRepositories : RepositoryDiscoveryState()
+    data class RepositoriesLoaded(val repositories: List<GitHubRepository>) : RepositoryDiscoveryState()
+    data class LoadingBranches(val repository: GitHubRepository) : RepositoryDiscoveryState()
+    data class BranchesLoaded(val repository: GitHubRepository, val branches: List<GitHubBranch>, val selectedBranch: GitHubBranch?) : RepositoryDiscoveryState()
+    object Connecting : RepositoryDiscoveryState()
     data class Error(val message: String) : RepositoryDiscoveryState()
 }
 
@@ -114,32 +118,60 @@ class GitHubViewModel(
         }
     }
 
-    fun fetchRepositories() {
+fun fetchRepositories() {
         viewModelScope.launch {
-            _discoveryState.value = RepositoryDiscoveryState.Loading
+            _discoveryState.value = RepositoryDiscoveryState.LoadingRepositories
             try {
                 val repos = githubService.getRepositories()
-                _discoveryState.value = RepositoryDiscoveryState.Success(repos)
+                _discoveryState.value = RepositoryDiscoveryState.RepositoriesLoaded(repos)
             } catch (e: Exception) {
                 _discoveryState.value = RepositoryDiscoveryState.Error(e.message ?: "Failed to fetch repositories")
             }
         }
     }
 
-    fun connectRepository(repository: GitHubRepository) {
+    fun selectRepository(repository: GitHubRepository) {
         viewModelScope.launch {
+            _discoveryState.value = RepositoryDiscoveryState.LoadingBranches(repository)
             try {
-                val config = GitHubConfigEntity(
-                    projectId = projectId,
-                    owner = repository.fullName.substringBefore("/"),
-                    repository = repository.name,
-                    branch = repository.defaultBranch,
-                    isConnected = true
-                )
-                configRepository.saveConfig(config)
-                _discoveryState.value = RepositoryDiscoveryState.Idle // close discovery
+                val owner = repository.fullName.substringBefore("/")
+                val branches = githubService.getBranches(owner, repository.name)
+                val defaultBranch = branches.find { it.name == repository.defaultBranch } ?: branches.firstOrNull()
+                _discoveryState.value = RepositoryDiscoveryState.BranchesLoaded(repository, branches, defaultBranch)
             } catch (e: Exception) {
-                _projectState.value = GitHubProjectState.Error(e.message ?: "Failed to connect")
+                _discoveryState.value = RepositoryDiscoveryState.Error(e.message ?: "Failed to load branches")
+            }
+        }
+    }
+
+    fun selectBranch(branch: GitHubBranch) {
+        val currentState = _discoveryState.value
+        if (currentState is RepositoryDiscoveryState.BranchesLoaded) {
+            _discoveryState.value = currentState.copy(selectedBranch = branch)
+        }
+    }
+
+    fun connectRepository() {
+        val currentState = _discoveryState.value
+        if (currentState is RepositoryDiscoveryState.BranchesLoaded) {
+            val repository = currentState.repository
+            val selectedBranch = currentState.selectedBranch ?: return
+
+            viewModelScope.launch {
+                _discoveryState.value = RepositoryDiscoveryState.Connecting
+                try {
+                    val config = GitHubConfigEntity(
+                        projectId = projectId,
+                        owner = repository.fullName.substringBefore("/"),
+                        repository = repository.name,
+                        branch = selectedBranch.name,
+                        isConnected = true
+                    )
+                    configRepository.saveConfig(config)
+                    _discoveryState.value = RepositoryDiscoveryState.Idle // close discovery
+                } catch (e: Exception) {
+                    _discoveryState.value = RepositoryDiscoveryState.Error(e.message ?: "Failed to connect")
+                }
             }
         }
     }

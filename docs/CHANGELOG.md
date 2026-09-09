@@ -46,3 +46,8 @@ The historical development record for Autonomous Arc.
 - **Added:** Basic Jetpack Compose app setup.
 - **Added:** Single-screen prompt input and chat mock.
 - **Added:** `metadata.json` and strings configuration.
+
+## [0.6.0] - GitHub Connection Flow
+- Implemented real GitHub authentication and API client using Retrofit/Moshi.
+- Added repository and branch selection to GitHub dialog.
+- Implemented secure local state configuration (persisting connected project config).

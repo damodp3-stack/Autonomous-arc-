@@ -12,6 +12,10 @@ What actually exists in the repository now:
   - `MockAIProvider` (Offline/Testing)
   - `GeminiAIProvider` (Direct REST API integration using Retrofit and Moshi)
 - Navigation managed via `androidx.navigation.compose`.
+- GitHub Integration Foundation:
+  - `GitHubConfigEntity` stored in Room, linked 1:1 with Projects.
+  - `GitHubService` and `GitHubAuthService` implementations using Retrofit/Moshi.
+  - User Flow: Project -> GitHubConfig -> GitHubService -> GitHub API.
 
 ## Target Architecture
 What the system is intended to become.
