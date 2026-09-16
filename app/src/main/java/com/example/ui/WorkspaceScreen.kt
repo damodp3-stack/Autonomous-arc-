@@ -237,6 +237,8 @@ fun WorkspaceScreen(viewModel: WorkspaceViewModel, onBack: () -> Unit) {
     val autonomousState by viewModel.autonomousEngine.state.collectAsStateWithLifecycle()
     val autonomousIteration by viewModel.autonomousEngine.iteration.collectAsStateWithLifecycle()
     val autonomousAction by viewModel.autonomousEngine.lastAction.collectAsStateWithLifecycle()
+    val autonomousPlan by viewModel.autonomousEngine.currentPlan.collectAsStateWithLifecycle()
+    val autonomousTaskIndex by viewModel.autonomousEngine.currentTaskIndex.collectAsStateWithLifecycle()
     val isAutonomousRunning = autonomousState != com.example.ai.AutonomousState.IDLE && autonomousState != com.example.ai.AutonomousState.COMPLETED && autonomousState != com.example.ai.AutonomousState.FAILED && autonomousState != com.example.ai.AutonomousState.BLOCKED && autonomousState != com.example.ai.AutonomousState.STOPPED
 
 
@@ -497,8 +499,11 @@ fun WorkspaceScreen(viewModel: WorkspaceViewModel, onBack: () -> Unit) {
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         if (isAutonomousRunning) {
+                                            val taskText = if (autonomousPlan != null && autonomousTaskIndex >= 0 && autonomousTaskIndex < autonomousPlan!!.tasks.size) {
+                                                "Task ${autonomousTaskIndex + 1}/${autonomousPlan!!.tasks.size} | "
+                                            } else ""
                                             Text(
-                                                text = "Iter $autonomousIteration | $autonomousAction",
+                                                text = "Iter $autonomousIteration | $taskText$autonomousAction",
                                                 style = MaterialTheme.typography.bodySmall,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                                 maxLines = 1,
