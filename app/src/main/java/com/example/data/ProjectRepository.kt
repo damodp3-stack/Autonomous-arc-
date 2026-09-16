@@ -5,20 +5,20 @@ import kotlinx.coroutines.flow.firstOrNull
 
 interface ProjectRepository {
     fun getAllProjects(): Flow<List<ProjectEntity>>
-    fun getProject(projectId: String): Flow<ProjectEntity?>
+    open fun getProject(projectId: String): Flow<ProjectEntity?>
     suspend fun createProject(name: String): String
     suspend fun renameProject(projectId: String, newName: String)
     suspend fun deleteProject(projectId: String)
 }
 
-class LocalProjectRepository(
+open class LocalProjectRepository(
     private val projectDao: ProjectDao,
     private val messageDao: MessageDao,
     private val projectFileRepository: ProjectFileRepository
 ) : ProjectRepository {
     override fun getAllProjects(): Flow<List<ProjectEntity>> = projectDao.getAllProjects()
 
-    override fun getProject(projectId: String): Flow<ProjectEntity?> = projectDao.getProject(projectId)
+    override open fun getProject(projectId: String): Flow<ProjectEntity?> = projectDao.getProject(projectId)
 
     override suspend fun createProject(name: String): String {
         val project = ProjectEntity(name = name)

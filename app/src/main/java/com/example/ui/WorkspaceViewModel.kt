@@ -69,8 +69,8 @@ class WorkspaceViewModel(
 
     private val codeChangeApplier = com.example.ai.CodeChangeApplier(fileRepository)
 
-    val availableProviders = listOf("Gemini", "OpenAI", "Anthropic", "Mock")
-    private val _selectedProvider = MutableStateFlow(availableProviders.firstOrNull() ?: "Mock")
+    val availableProviders = listOf("Gemini", "OpenAI", "Anthropic")
+    private val _selectedProvider = MutableStateFlow(availableProviders.firstOrNull() ?: "Gemini")
     val selectedProvider: StateFlow<String> = _selectedProvider.asStateFlow()
 
     private val _proposalState = MutableStateFlow(ProposalState.IDLE)
@@ -179,7 +179,7 @@ class WorkspaceViewModel(
         viewModelScope.launch {
             messageRepository.insert(MessageEntity(projectId = projectId, text = text, isUser = true))
             _isBuilding.value = true
-            val aiProvider = aiFactory.getProvider(_projectName.value)
+            val aiProvider = aiFactory.getProvider(_projectName.value, _selectedProvider.value)
             val projectContext = ProjectContext(
                 projectName = _projectName.value,
                 files = files.value,
@@ -203,7 +203,7 @@ class WorkspaceViewModel(
             _currentProposal.value = null
             _proposalError.value = null
             try {
-                val aiProvider = aiFactory.getProvider(_projectName.value)
+                val aiProvider = aiFactory.getProvider(_projectName.value, _selectedProvider.value)
                 val projectContext = ProjectContext(
                     projectName = _projectName.value,
                     files = files.value,

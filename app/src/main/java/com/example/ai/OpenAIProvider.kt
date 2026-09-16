@@ -19,7 +19,7 @@ class OpenAIProvider(
         request: String,
         projectContext: ProjectContext
     ): CodeChangeProposal {
-        throw NotImplementedError("OpenAI proposal generation not yet implemented.")
+        throw UnsupportedOperationException("OpenAI proposal generation not yet implemented.")
     }
 }
 
@@ -40,6 +40,6 @@ class AnthropicProvider(
         request: String,
         projectContext: ProjectContext
     ): CodeChangeProposal {
-        throw NotImplementedError("Anthropic proposal generation not yet implemented.")
+        throw UnsupportedOperationException("Anthropic proposal generation not yet implemented.")
     }
 }

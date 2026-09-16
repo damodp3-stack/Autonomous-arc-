@@ -3,9 +3,9 @@ package com.example.data
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.firstOrNull
 
-class ProjectFileRepository(private val fileDao: ProjectFileDao, val fileSystem: ProjectFileSystem) {
+open class ProjectFileRepository(private val fileDao: ProjectFileDao, val fileSystem: ProjectFileSystem) {
     
-    fun getFilesForProject(projectId: String): Flow<List<ProjectFileEntity>> =
+    open fun getFilesForProject(projectId: String): Flow<List<ProjectFileEntity>> =
         fileDao.getFilesForProject(projectId)
 
     suspend fun getFile(fileId: String): ProjectFileEntity? =
@@ -136,7 +136,7 @@ class ProjectFileRepository(private val fileDao: ProjectFileDao, val fileSystem:
         return false
     }
 
-    suspend fun syncProjectFilesToSystem(projectId: String) {
+    open suspend fun syncProjectFilesToSystem(projectId: String) {
         try {
             val filesFlow = fileDao.getFilesForProject(projectId)
             val roomFiles = filesFlow.firstOrNull() ?: emptyList()

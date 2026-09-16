@@ -192,6 +192,21 @@ class GeminiAIProvider(private val projectName: String, private val providedApiK
                 append("2. Inspect the supplied project context.\n")
                 append("3. Identify which files need changes.\n")
                 append("4. Return a structured JSON change proposal matching the CodeChangeProposal schema.\n")
+                append("You must return a structured JSON response EXACTLY matching this schema:\n")
+                append("{\n")
+                append("  \"summary\": \"Short description of changes\",\n")
+                append("  \"explanation\": \"Detailed explanation of why these changes were made\",\n")
+                append("  \"changes\": [\n")
+                append("    {\n")
+                append("      \"filePath\": \"path/relative/to/project/file.txt\",\n")
+                append("      \"operation\": \"CREATE|MODIFY|DELETE|RENAME\",\n")
+                append("      \"newFilePath\": \"new/path.txt (only required for RENAME)\",\n")
+                append("      \"originalContent\": \"Exact original content (required for MODIFY/DELETE)\",\n")
+                append("      \"proposedContent\": \"New content (required for CREATE/MODIFY)\"\n")
+                append("    }\n")
+                append("  ]\n")
+                append("}\n\n")
+                append("Allowed operations: CREATE, MODIFY, DELETE, RENAME.\n\n")
                 append("5. Include originalContent and proposedContent for every changed file.\n")
                 append("6. Never claim that a change was applied.\n")
                 append("7. Never modify files directly.\n")
@@ -200,7 +215,6 @@ class GeminiAIProvider(private val projectName: String, private val providedApiK
                 append("10. Preserve existing architecture and working functionality.\n")
                 append("11. Follow existing project conventions.\n")
                 append("12. If the request is ambiguous or required information is missing, explain the problem in the explanation field instead of fabricating code.\n\n")
-                append("Allowed operations: CREATE, MODIFY, DELETE.\n\n")
                 append("Project Context:\n")
                 append("Project Name: ${projectContext.projectName}\n")
                 if (projectContext.currentOpenFile != null) {
@@ -216,7 +230,6 @@ class GeminiAIProvider(private val projectName: String, private val providedApiK
                     }
                 }
             }
-
             val generateContentRequest = GenerateContentRequest(
                 contents = listOf(currentRequest),
                 systemInstruction = Content(
