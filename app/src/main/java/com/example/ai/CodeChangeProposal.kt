@@ -7,13 +7,14 @@ import com.squareup.moshi.JsonClass
 import java.util.UUID
 
 enum class FileOperation {
-    CREATE, MODIFY, DELETE
+    CREATE, MODIFY, DELETE, RENAME
 }
 
 @JsonClass(generateAdapter = true)
 data class FileChange(
     val filePath: String,
     val operation: FileOperation,
+    val newFilePath: String? = null,
     val originalContent: String = "",
     val proposedContent: String = ""
 )

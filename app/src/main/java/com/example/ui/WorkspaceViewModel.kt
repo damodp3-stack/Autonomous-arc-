@@ -64,12 +64,12 @@ class WorkspaceViewModel(
     private val messageRepository: MessageRepository,
     private val projectRepository: ProjectRepository,
     val fileRepository: ProjectFileRepository,
-    private val providers: Map<String, AIProvider>
+    private val aiFactory: com.example.ai.AIFactory
 ) : ViewModel() {
 
     private val codeChangeApplier = com.example.ai.CodeChangeApplier(fileRepository)
 
-    val availableProviders = providers.keys.toList()
+    val availableProviders = listOf("Gemini", "OpenAI", "Anthropic", "Mock")
     private val _selectedProvider = MutableStateFlow(availableProviders.firstOrNull() ?: "Mock")
     val selectedProvider: StateFlow<String> = _selectedProvider.asStateFlow()
 
@@ -86,9 +86,7 @@ class WorkspaceViewModel(
     val applyResult: StateFlow<com.example.ai.ApplyResult?> = _applyResult.asStateFlow()
 
     fun setProvider(providerName: String) {
-        if (providers.containsKey(providerName)) {
-            _selectedProvider.value = providerName
-        }
+        _selectedProvider.value = providerName
     }
 
     val messages: StateFlow<List<MessageEntity>> = messageRepository.getMessagesForProject(projectId)
@@ -181,7 +179,7 @@ class WorkspaceViewModel(
         viewModelScope.launch {
             messageRepository.insert(MessageEntity(projectId = projectId, text = text, isUser = true))
             _isBuilding.value = true
-            val aiProvider = providers[_selectedProvider.value] ?: providers.values.first()
+            val aiProvider = aiFactory.getProvider(_projectName.value)
             val projectContext = ProjectContext(
                 projectName = _projectName.value,
                 files = files.value,
@@ -205,7 +203,7 @@ class WorkspaceViewModel(
             _currentProposal.value = null
             _proposalError.value = null
             try {
-                val aiProvider = providers[_selectedProvider.value] ?: providers.values.first()
+                val aiProvider = aiFactory.getProvider(_projectName.value)
                 val projectContext = ProjectContext(
                     projectName = _projectName.value,
                     files = files.value,
@@ -309,12 +307,12 @@ class WorkspaceViewModelFactory(
     private val messageRepository: MessageRepository,
     private val projectRepository: ProjectRepository,
     val fileRepository: ProjectFileRepository,
-    private val providers: Map<String, AIProvider>
+    private val aiFactory: com.example.ai.AIFactory
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(WorkspaceViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            return WorkspaceViewModel(projectId, messageRepository, projectRepository, fileRepository, providers) as T
+            return WorkspaceViewModel(projectId, messageRepository, projectRepository, fileRepository, aiFactory) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }

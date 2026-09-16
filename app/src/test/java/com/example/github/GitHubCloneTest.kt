@@ -48,7 +48,8 @@ class GitHubCloneTest {
     }
 
     private fun createViewModel(projectId: String): GitHubViewModel {
-        return GitHubViewModel(projectId, githubService, githubService, configRepository, fileRepository)
+        val syncService = com.example.github.RealGitHubSyncService(githubService, fileRepository, configRepository)
+        return GitHubViewModel(projectId, githubService, githubService, configRepository, syncService)
     }
 
     private suspend fun doClone(viewModel: GitHubViewModel, repoName: String) {
@@ -67,8 +68,12 @@ class GitHubCloneTest {
         kotlinx.coroutines.delay(10)
         
         viewModel.connectRepository(force = true) // force to bypass conflict state for empty project
-        org.robolectric.shadows.ShadowLooper.idleMainLooper()
-        kotlinx.coroutines.delay(100)
+        for (i in 0..500) {
+            org.robolectric.shadows.ShadowLooper.idleMainLooper()
+            val state = viewModel.discoveryState.value
+            if (state is com.example.ui.RepositoryDiscoveryState.Idle || state is com.example.ui.RepositoryDiscoveryState.Error) break
+            Thread.sleep(10)
+        }
     }
 
     @Test
@@ -78,6 +83,9 @@ class GitHubCloneTest {
         doClone(vm, "normal-repo")
 
         val files = fileRepository.getFilesForProject(projId).firstOrNull() ?: emptyList()
+        if (files.isEmpty()) {
+            println("DISCOVERY STATE WAS " + vm.discoveryState.value)
+        }
         assertTrue("Files should be created", files.isNotEmpty())
         
         val readme = files.find { it.name == "README.md" }

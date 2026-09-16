@@ -9,13 +9,15 @@ import androidx.room.RoomDatabase
     MessageEntity::class, 
     ProjectEntity::class, 
     ProjectFileEntity::class, 
-    GitHubConfigEntity::class
-], version = 4, exportSchema = false)
+    GitHubConfigEntity::class,
+    AIProviderConfigEntity::class
+], version = 5, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun messageDao(): MessageDao
     abstract fun projectDao(): ProjectDao
     abstract fun projectFileDao(): ProjectFileDao
     abstract fun githubConfigDao(): GitHubConfigDao
+    abstract fun aiProviderConfigDao(): AIProviderConfigDao
 
     companion object {
         @Volatile

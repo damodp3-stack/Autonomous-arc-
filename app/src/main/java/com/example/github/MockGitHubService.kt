@@ -2,7 +2,7 @@ package com.example.github
 
 import kotlinx.coroutines.delay
 
-class MockGitHubService : GitHubService, GitHubAuthService, GitHubSyncService {
+class MockGitHubService : GitHubService, GitHubAuthService {
     private var authenticated = false
     private val mockUser = GitHubUser(
         login = "mock_user",
@@ -67,33 +67,38 @@ class MockGitHubService : GitHubService, GitHubAuthService, GitHubSyncService {
     var currentRefSha = "abcdef123456"
 
     override suspend fun getRef(owner: String, repo: String, branch: String): GitHubRef {
-        kotlinx.coroutines.delay(100)
+        if (!authenticated) throw Exception("Not authenticated")
+        
         return GitHubRef("refs/heads/$branch", "url", GitHubRefObject(currentRefSha, "commit", "url"))
     }
 
     override suspend fun createBlob(owner: String, repo: String, request: GitHubCreateBlobRequest): GitHubCreateBlobResponse {
-        kotlinx.coroutines.delay(100)
+        if (!authenticated) throw Exception("Not authenticated")
+        
         if (request.content == "fail-blob") throw Exception("Blob creation failed")
         blobCounter++
         return GitHubCreateBlobResponse("blob-sha-$blobCounter", "url")
     }
 
     override suspend fun createTree(owner: String, repo: String, request: GitHubCreateTreeRequest): GitHubCreateTreeResponse {
-        kotlinx.coroutines.delay(100)
+        if (!authenticated) throw Exception("Not authenticated")
+        
         if (request.tree.any { it.path == "fail-tree" }) throw Exception("Tree creation failed")
         lastCreatedTree = request
         return GitHubCreateTreeResponse("new-tree-sha", "url")
     }
 
     override suspend fun createCommit(owner: String, repo: String, request: GitHubCreateCommitRequest): GitHubCreateCommitResponse {
-        kotlinx.coroutines.delay(100)
+        if (!authenticated) throw Exception("Not authenticated")
+        
         if (request.message == "fail-commit") throw Exception("Commit creation failed")
         lastCreatedCommit = request
         return GitHubCreateCommitResponse("new-commit-sha", "url")
     }
 
     override suspend fun updateRef(owner: String, repo: String, branch: String, request: GitHubUpdateRefRequest): GitHubRef {
-        kotlinx.coroutines.delay(100)
+        if (!authenticated) throw Exception("Not authenticated")
+        
         if (failNextRefUpdate) {
             failNextRefUpdate = false
             throw Exception("Ref update failed")
@@ -103,20 +108,11 @@ class MockGitHubService : GitHubService, GitHubAuthService, GitHubSyncService {
         return GitHubRef("refs/heads/$branch", "url", GitHubRefObject(request.sha, "commit", "url"))
     }
 
-    override suspend fun sync(projectId: String): SyncResult {
-        return SyncResult.Success
-    }
 
-    override suspend fun pull(projectId: String): SyncResult {
-        return SyncResult.Success
-    }
-
-    override suspend fun push(projectId: String, commitMessage: String): SyncResult {
-        return SyncResult.Success
-    }
 
 
     override suspend fun getTree(owner: String, repo: String, treeSha: String): GitHubTree {
+        if (!authenticated) throw Exception("Not authenticated")
         
         if (repo == "truncated-repo") {
             if (treeSha == "root") {
@@ -210,6 +206,7 @@ class MockGitHubService : GitHubService, GitHubAuthService, GitHubSyncService {
     }
 
     override suspend fun getBlob(owner: String, repo: String, fileSha: String): GitHubBlob {
+        if (!authenticated) throw Exception("Not authenticated")
 
         if (fileSha == "fail-sha") {
             throw Exception("Network download failure")

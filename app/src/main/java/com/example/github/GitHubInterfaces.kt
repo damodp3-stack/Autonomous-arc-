@@ -30,12 +30,14 @@ interface GitHubAuthService {
  * Service to handle synchronization between GitHub and the local project filesystem.
  */
 interface GitHubSyncService {
-    suspend fun sync(projectId: String): SyncResult
-    suspend fun pull(projectId: String): SyncResult
-    suspend fun push(projectId: String, commitMessage: String): SyncResult
+    suspend fun sync(projectId: String, progress: (String) -> Unit = {}): SyncResult
+    suspend fun pull(projectId: String, progress: (String) -> Unit = {}): SyncResult
+    suspend fun push(projectId: String, commitMessage: String, summary: CommitSummary, progress: (String) -> Unit = {}): SyncResult
+    suspend fun detectChanges(projectId: String): CommitSummary?
 }
 
 sealed class SyncResult {
     object Success : SyncResult()
     data class Error(val message: String) : SyncResult()
+    data class Conflict(val message: String) : SyncResult()
 }

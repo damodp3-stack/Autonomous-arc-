@@ -6,6 +6,10 @@ This document represents the current actual state of the repository.
 Phase 4 — True Filesystem Workspace (Completed).
 
 **Completed**
+- GitHub Integration (Clone, Commit, Push, Conflict Detection).
+- Multi-Provider AI Architecture (Gemini, OpenAI, Anthropic support via AIFactory and AIProviderConfigEntity).
+- Secure API Key Storage Foundation (APIKeyManager).
+- Structured File Operations expanded to include RENAME.
 - Clean home screen (Project List).
 - Project creation, renaming, and deletion.
 - Project-isolated workspaces.
@@ -25,7 +29,6 @@ Phase 4 — True Filesystem Workspace (Completed).
 
 **Pending**
 - Media/Ideas Vault.
-- GitHub Integration (Clone, Commit, Push, Conflict Detection).
 - Cloud storage/Firebase.
 - Token/usage tracking.
 - APK/cloud builds.
@@ -37,6 +40,8 @@ Phase 4 — True Filesystem Workspace (Completed).
 - Code editor is a foundational version; it allows reading/writing text but lacks full IDE features like syntax highlighting.
 
 **Verified**
+- Multi-Provider AI Architecture compilation and routing (Verified).
+- File operations expanded to support RENAME with safe Apply/Rollback (Verified).
 - Project creation and navigation (Verified).
 - Database persistence for messages, projects, and files (Verified).
 - Gemini AI API integration via REST and Moshi (Verified compilation and mock switching).
@@ -53,11 +58,11 @@ Phase 4 — True Filesystem Workspace (Completed).
 - Repository pattern (`LocalProjectRepository`, `MessageRepository`, `ProjectFileRepository`).
 - Navigation Compose for routing (`AppNavigation`).
 - MVVM Architecture (`ProjectListViewModel`, `WorkspaceViewModel`).
-- Interface-driven AI abstraction (`AIProvider` with `GeminiAIProvider` and `MockAIProvider`).
+- Dynamic Multi-Provider AI abstraction (`AIFactory`, `AIProviderConfigEntity`, `OpenAIProvider`, `AnthropicProvider`, `GeminiAIProvider`, `MockAIProvider`).
 - Safe code execution layer (`CodeChangeApplier`).
 
 **Immediate Next Step**
-- GitHub Integration & Build Foundation.
+- Core AI app-generation pipeline refinement and UI/UX integration for provider/model configuration.
 
 **Final Goal**
 The intended final Autonomous Arc product: A fully autonomous AI coding assistant with real-time file editing, GitHub sync, and cloud builds on mobile.

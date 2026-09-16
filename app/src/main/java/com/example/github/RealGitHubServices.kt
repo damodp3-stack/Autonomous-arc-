@@ -7,7 +7,7 @@ import retrofit2.converter.moshi.MoshiConverterFactory
 
 class RealGitHubServices(
     private val tokenManager: TokenManager
-) : GitHubAuthService, GitHubService, GitHubSyncService {
+) : GitHubAuthService, GitHubService {
 
     private val moshi = Moshi.Builder()
         .add(KotlinJsonAdapterFactory())
@@ -94,16 +94,5 @@ class RealGitHubServices(
         return api.updateRef(getAuthHeader(), owner, repo, branch, request)
     }
 
-    override suspend fun sync(projectId: String): SyncResult {
-        // Foundation: We just return success for now as actual file sync is out of scope
-        return SyncResult.Success
-    }
 
-    override suspend fun pull(projectId: String): SyncResult {
-        return SyncResult.Success
-    }
-
-    override suspend fun push(projectId: String, commitMessage: String): SyncResult {
-        return SyncResult.Success
-    }
 }

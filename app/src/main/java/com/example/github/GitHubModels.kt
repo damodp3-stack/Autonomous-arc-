@@ -125,3 +125,22 @@ data class GitHubRefObject(
     val type: String,
     val url: String
 )
+
+enum class ChangeType { ADDED, MODIFIED, DELETED, UNCHANGED }
+
+data class FileChange(
+    val path: String,
+    val changeType: ChangeType,
+    val isBinary: Boolean,
+    val size: Long,
+    val contentBytes: ByteArray? = null,
+    val remoteSha: String? = null
+)
+
+data class CommitSummary(
+    val changes: List<FileChange>,
+    val additions: Int,
+    val modifications: Int,
+    val deletions: Int,
+    val totalChangedSize: Long
+)

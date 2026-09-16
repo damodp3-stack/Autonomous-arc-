@@ -22,6 +22,9 @@ fun AppNavigation() {
     val database = AppDatabase.getDatabase(context)
     val fileSystem = ProjectFileSystem(context)
     val messageRepository = MessageRepository(database.messageDao())
+    val aiProviderConfigRepository = com.example.data.AIProviderConfigRepository(database.aiProviderConfigDao())
+    val apiKeyManager = com.example.ai.SecureAPIKeyManager(context)
+    val aiFactory = com.example.ai.AIFactory(aiProviderConfigRepository, apiKeyManager)
     val fileRepository = ProjectFileRepository(database.projectFileDao(), fileSystem)
     val projectRepository = LocalProjectRepository(database.projectDao(), database.messageDao(), fileRepository)
 
@@ -41,12 +44,7 @@ fun AppNavigation() {
         composable("workspace/{projectId}") { backStackEntry ->
             val projectId = backStackEntry.arguments?.getString("projectId") ?: return@composable
             
-            // We retrieve the project name synchronously if possible, or just pass the ID to GeminiAIProvider. 
-            // In a real app we'd pass the actual project context, but for now we'll pass projectId.
-            val providers = mapOf(
-                "Gemini" to GeminiAIProvider(projectName = projectId),
-                "Mock" to MockAIProvider()
-            )
+
             
             val viewModel: WorkspaceViewModel = viewModel(
                 factory = WorkspaceViewModelFactory(
@@ -54,7 +52,7 @@ fun AppNavigation() {
                     messageRepository = messageRepository,
                     projectRepository = projectRepository,
                     fileRepository = fileRepository,
-                    providers = providers
+                    aiFactory = aiFactory
                 )
             )
             

@@ -652,6 +652,7 @@ fun WorkspaceScreen(viewModel: WorkspaceViewModel, onBack: () -> Unit) {
                                                 com.example.ai.FileOperation.CREATE -> Color(0xFF4CAF50)
                                                 com.example.ai.FileOperation.MODIFY -> Color(0xFF2196F3)
                                                 com.example.ai.FileOperation.DELETE -> Color(0xFFF44336)
+                                                com.example.ai.FileOperation.RENAME -> Color(0xFFFF9800)
                                             }
                                             Surface(
                                                 color = opColor.copy(alpha = 0.2f),
@@ -827,12 +828,18 @@ fun WorkspaceScreen(viewModel: WorkspaceViewModel, onBack: () -> Unit) {
         val githubViewModel = androidx.lifecycle.viewmodel.compose.viewModel<com.example.ui.GitHubViewModel>(
             factory = object : androidx.lifecycle.ViewModelProvider.Factory {
                 override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
+                    val configRepo = com.example.data.GitHubConfigRepository(db.githubConfigDao())
+                    val syncService = com.example.github.RealGitHubSyncService(
+                        githubService = gitHubServices,
+                        fileRepository = viewModel.fileRepository,
+                        configRepository = configRepo
+                    )
                     return com.example.ui.GitHubViewModel(
                         projectId = viewModel.projectId,
                         authService = gitHubServices,
                         githubService = gitHubServices,
-                        configRepository = com.example.data.GitHubConfigRepository(db.githubConfigDao()),
-                        fileRepository = viewModel.fileRepository
+                        configRepository = configRepo,
+                        syncService = syncService
                     ) as T
                 }
             }

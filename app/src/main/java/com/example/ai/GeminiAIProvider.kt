@@ -72,8 +72,10 @@ data class Candidate(
 // --- Retrofit Setup ---
 
 interface GeminiApiService {
-    @POST("v1beta/models/gemini-3.5-flash:generateContent")
+    @POST("v1beta/models/{model}:generateContent")
     suspend fun generateContent(
+        @retrofit2.http.Path("model") model: String,
+
         @Query("key") apiKey: String,
         @Body request: GenerateContentRequest
     ): GenerateContentResponse
@@ -102,10 +104,10 @@ object GeminiRetrofitClient {
     }
 }
 
-class GeminiAIProvider(private val projectName: String) : AIProvider {
+class GeminiAIProvider(private val projectName: String, private val providedApiKey: String? = null, private val model: String = "gemini-1.5-pro") : AIProvider {
     override suspend fun generateResponse(prompt: String, context: List<MessageEntity>, projectContext: ProjectContext?): String {
         return withContext(Dispatchers.IO) {
-            val apiKey = BuildConfig.GEMINI_API_KEY
+            val apiKey = providedApiKey ?: BuildConfig.GEMINI_API_KEY
             if (apiKey.isBlank() || apiKey == "MY_GEMINI_API_KEY" || apiKey == "YOUR_GEMINI_API_KEY") {
                 return@withContext "Error: Gemini API key is missing or invalid. Please check your .env configuration."
             }
@@ -142,7 +144,7 @@ class GeminiAIProvider(private val projectName: String) : AIProvider {
             )
 
             try {
-                val response = GeminiRetrofitClient.service.generateContent(apiKey, request)
+                val response = GeminiRetrofitClient.service.generateContent(model, apiKey, request)
                 val responseText = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
                 
                 if (responseText != null) {
@@ -172,7 +174,7 @@ class GeminiAIProvider(private val projectName: String) : AIProvider {
 
     override suspend fun proposeCodeChanges(request: String, projectContext: ProjectContext): CodeChangeProposal {
         return withContext(Dispatchers.IO) {
-            val apiKey = BuildConfig.GEMINI_API_KEY
+            val apiKey = providedApiKey ?: BuildConfig.GEMINI_API_KEY
             if (apiKey.isBlank() || apiKey == "MY_GEMINI_API_KEY" || apiKey == "YOUR_GEMINI_API_KEY") {
                 throw IllegalStateException("Error: Gemini API key is missing or invalid.")
             }
@@ -225,7 +227,7 @@ class GeminiAIProvider(private val projectName: String) : AIProvider {
             )
 
             try {
-                val response = GeminiRetrofitClient.service.generateContent(apiKey, generateContentRequest)
+                val response = GeminiRetrofitClient.service.generateContent(model, apiKey, generateContentRequest)
                 var responseText = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
                     ?: throw IllegalStateException("Error: Received empty response from Gemini.")
                 
