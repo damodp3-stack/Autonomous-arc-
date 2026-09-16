@@ -92,6 +92,8 @@ import androidx.compose.material.icons.automirrored.filled.Send
 
 
 import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.MoreVert
 
 
 
@@ -231,6 +233,9 @@ fun WorkspaceScreen(viewModel: WorkspaceViewModel, onBack: () -> Unit) {
     val proposalState by viewModel.proposalState.collectAsStateWithLifecycle()
     val currentProposal by viewModel.currentProposal.collectAsStateWithLifecycle()
     val proposalError by viewModel.proposalError.collectAsStateWithLifecycle()
+    val isAutonomousMode by viewModel.isAutonomousMode.collectAsStateWithLifecycle()
+    val isAutonomousRunning by viewModel.isAutonomousRunning.collectAsStateWithLifecycle()
+
 
     var promptText by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
@@ -295,6 +300,7 @@ fun WorkspaceScreen(viewModel: WorkspaceViewModel, onBack: () -> Unit) {
                         val availableProviders = viewModel.availableProviders
                         val selectedProvider by viewModel.selectedProvider.collectAsStateWithLifecycle()
                         var providerMenuExpanded by remember { mutableStateOf(false) }
+    var showSettingsDialog by remember { mutableStateOf(false) }
 
                         IconButton(onClick = { showGitHubDialog = true }) {
                             Icon(
@@ -304,6 +310,9 @@ fun WorkspaceScreen(viewModel: WorkspaceViewModel, onBack: () -> Unit) {
                             )
                         }
 
+                        IconButton(onClick = { showSettingsDialog = true }) {
+                            Icon(Icons.Default.Settings, contentDescription = "Settings")
+                        }
                         Box {
                             TextButton(onClick = { providerMenuExpanded = true }) {
                                 Text(selectedProvider)
@@ -484,6 +493,24 @@ fun WorkspaceScreen(viewModel: WorkspaceViewModel, onBack: () -> Unit) {
                                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
+                                        if (isAutonomousRunning) {
+                                            Button(
+                                                onClick = { viewModel.stopAutonomousRun() },
+                                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                                            ) {
+                                                Text("STOP AUTO", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
+                                            }
+                                        } else {
+                                            TextButton(
+                                                onClick = { viewModel.toggleAutonomousMode() },
+                                                colors = ButtonDefaults.textButtonColors(
+                                                    contentColor = if (isAutonomousMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            ) {
+                                                Text(if (isAutonomousMode) "AUTO ON" else "AUTO OFF", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
+                                            }
+                                        }
                                         TextButton(
                                             onClick = {
                                                 if (promptText.isNotBlank() && !isBuilding && proposalState != ProposalState.GENERATING) {
@@ -578,6 +605,9 @@ fun WorkspaceScreen(viewModel: WorkspaceViewModel, onBack: () -> Unit) {
 
     
     val applyResult by viewModel.applyResult.collectAsStateWithLifecycle()
+
+
+
 
     if (proposalState == ProposalState.REVIEWING && currentProposal != null) {
         Dialog(
@@ -1073,4 +1103,64 @@ fun GeneratingState() {
             }
         }
     }
+}
+
+@Composable
+fun APIKeySettingsDialog(
+    viewModel: WorkspaceViewModel,
+    onDismiss: () -> Unit
+) {
+    val providers = listOf("Gemini", "OpenAI", "Anthropic")
+    var geminiKey by remember { mutableStateOf(viewModel.apiKeyManager.getApiKey("Gemini") ?: "") }
+    var openaiKey by remember { mutableStateOf(viewModel.apiKeyManager.getApiKey("OpenAI") ?: "") }
+    var anthropicKey by remember { mutableStateOf(viewModel.apiKeyManager.getApiKey("Anthropic") ?: "") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("API Key Settings") },
+        text = {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedTextField(
+                    value = geminiKey,
+                    onValueChange = { geminiKey = it },
+                    label = { Text("Gemini API Key") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = openaiKey,
+                    onValueChange = { openaiKey = it },
+                    label = { Text("OpenAI API Key") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = anthropicKey,
+                    onValueChange = { anthropicKey = it },
+                    label = { Text("Anthropic API Key") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    viewModel.apiKeyManager.saveApiKey("Gemini", geminiKey.trim())
+                    viewModel.apiKeyManager.saveApiKey("OpenAI", openaiKey.trim())
+                    viewModel.apiKeyManager.saveApiKey("Anthropic", anthropicKey.trim())
+                    onDismiss()
+                }
+            ) {
+                Text("Save")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
 }

@@ -6,6 +6,9 @@ This document represents the current actual state of the repository.
 Phase 4 — True Filesystem Workspace (Completed).
 
 **Completed**
+- True Autonomous Pipeline for iterative development.
+- Actual implementations for Anthropic and OpenAI REST clients.
+- UI for entering and managing custom API keys via SecureAPIKeyManager.
 - GitHub Integration (Clone, Commit, Push, Conflict Detection).
 - Multi-Provider AI Architecture (Gemini, OpenAI, Anthropic support via AIFactory and AIProviderConfigEntity).
 - Secure API Key Storage Foundation (APIKeyManager).
@@ -28,9 +31,9 @@ Phase 4 — True Filesystem Workspace (Completed).
 - **True Filesystem Workspace completed.** Project files are securely managed, written to, and synchronized with the real Android private filesystem.
 
 **Pending**
-- True Autonomous Pipeline: autonomous plan/execute loops without human intervention for every file.
-- Actual implementations for Anthropic and OpenAI REST clients (currently stubbed).
-- UI for entering and managing custom API keys via SecureAPIKeyManager.
+
+
+
 - Media/Ideas Vault.
 - Cloud storage/Firebase.
 - Token/usage tracking.
@@ -40,9 +43,9 @@ Phase 4 — True Filesystem Workspace (Completed).
 - None verified at this time.
 
 **Known Limitations**
-- API Keys must currently be configured via hardcoded `.env` rather than in-app settings menu.
-- OpenAI and Anthropic are only stubbed and do not yet execute real network calls.
-- AI currently prompts for human review for each change proposal, lacking true autonomous continuation loops.
+
+
+
 - Code editor is a foundational version; it allows reading/writing text but lacks full IDE features like syntax highlighting.
 
 **Verified**

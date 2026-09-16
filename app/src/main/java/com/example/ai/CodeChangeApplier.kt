@@ -119,7 +119,7 @@ class CodeChangeApplier(
             } catch (e: Exception) {
                 // Application error during a change
                 val rollbackSuccess = try {
-                    rollback(createdFileIds, snapshot)
+                    rollback(projectId, createdFileIds, snapshot)
                     true
                 } catch (rollbackEx: Exception) {
                     return ApplyResult.RollbackError(
@@ -135,6 +135,7 @@ class CodeChangeApplier(
     }
 
     suspend fun rollback(
+        projectId: String,
         createdFileIds: List<String>,
         snapshot: Map<String, ProjectFileEntity?>
     ) {
@@ -144,7 +145,7 @@ class CodeChangeApplier(
         }
 
         // Restore original files from snapshot (for MODIFY, DELETE, and RENAME operations)
-        for ((_, entity) in snapshot) {
+        for ((path, entity) in snapshot) {
             if (entity != null) {
                 // If it exists, it was either modified, deleted, or renamed.
                 // We'll just restore the original entity. 
@@ -154,18 +155,10 @@ class CodeChangeApplier(
                     throw Exception("Failed to restore file ${entity.path} during rollback")
                 }
             } else {
-                // For RENAME target, the entity in snapshot is null.
-                // The new file was created. We need to delete it.
-                // But wait, renameFile modifies the existing file's path. We just restored the original file above.
-                // So the old path is back. But we need to delete the new path file!
-                // Actually, renameFile modifies the entity in the DB. restoreFile(entity) restores the old entity.
-                // So the file in DB with new path is gone because it was overwritten by restoreFile?
-                // Wait, restoreFile uses the old ID. If Room REPLACE is used, it overwrites the record with the old path.
-                // What about the filesystem? restoreFile writes to disk at the old path.
-                // So the file at the new path on disk remains! We should delete it.
-                // But we don't have its ID if we only have the snapshot.
-                // We'll need the repository to clean it up.
-                // Actually, let's leave this for now. The requirement was to just implement the foundation.
+                
+                repository.fileSystem.deleteFile(projectId, path)
+                // If it was somehow recorded in DB under a new ID, we'd delete it, but for RENAME the ID is reused.
+                // For CREATE, createdFileIds handles deletion.
             }
         }
     }

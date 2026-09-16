@@ -223,9 +223,20 @@ class GeminiAIProvider(private val projectName: String, private val providedApiK
                 }
                 if (projectContext.files.isNotEmpty()) {
                     append("Other files in project:\n")
+                    var currentContextSize = 0
+                    val MAX_CONTEXT_SIZE = 100_000
                     projectContext.files.forEach { file ->
                         if (file.id != projectContext.currentOpenFile?.id) {
-                            append("- ${file.path}\n")
+                            val fileHeader = "\n--- ${file.path} ---\n"
+                            val fileContentSize = file.content.length
+                            if (currentContextSize + fileContentSize < MAX_CONTEXT_SIZE) {
+                                append(fileHeader)
+                                append(file.content)
+                                append("\n")
+                                currentContextSize += fileContentSize
+                            } else {
+                                append("- ${file.path} (Content omitted due to size limits)\n")
+                            }
                         }
                     }
                 }

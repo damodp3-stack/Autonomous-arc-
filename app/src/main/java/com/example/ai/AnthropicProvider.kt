@@ -4,10 +4,10 @@ import com.example.data.MessageEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-class OpenAIProvider(
+class AnthropicProvider(
     private val projectName: String,
     private val providedApiKey: String? = null,
-    private val model: String = "gpt-4o"
+    private val model: String = "claude-3-5-sonnet-20240620"
 ) : AIProvider {
 
     override suspend fun generateResponse(
@@ -17,8 +17,8 @@ class OpenAIProvider(
     ): String {
         return withContext(Dispatchers.IO) {
             val apiKey = providedApiKey ?: ""
-            if (apiKey.isBlank() || apiKey == "MY_OPENAI_API_KEY" || apiKey == "YOUR_OPENAI_API_KEY") {
-                return@withContext "Error: OpenAI API key is missing or invalid. Please set it in Settings."
+            if (apiKey.isBlank() || apiKey == "MY_ANTHROPIC_API_KEY" || apiKey == "YOUR_ANTHROPIC_API_KEY") {
+                return@withContext "Error: Anthropic API key is missing or invalid. Please set it in Settings."
             }
 
             val systemInstruction = buildString {
@@ -28,32 +28,32 @@ class OpenAIProvider(
                 }
             }
 
-            val messages = mutableListOf<OpenAIMessage>()
-            messages.add(OpenAIMessage(role = "system", content = systemInstruction))
+            val messages = mutableListOf<AnthropicMessage>()
 
             // Limit history to last 10 messages
             val recentHistory = context.filter { !it.text.startsWith("AI proposed changes") }.takeLast(10)
             recentHistory.forEach { msg ->
-                messages.add(OpenAIMessage(
+                messages.add(AnthropicMessage(
                     role = if (msg.isUser) "user" else "assistant",
                     content = msg.text
                 ))
             }
 
-            messages.add(OpenAIMessage(role = "user", content = prompt))
+            messages.add(AnthropicMessage(role = "user", content = prompt))
 
-            val request = OpenAIChatRequest(
+            val request = AnthropicRequest(
                 model = model,
-                messages = messages
+                messages = messages,
+                system = systemInstruction
             )
 
             try {
-                val response = OpenAIRetrofitClient.service.createChatCompletion("Bearer $apiKey", request = request)
-                val responseText = response.choices?.firstOrNull()?.message?.content
+                val response = AnthropicRetrofitClient.service.createMessage(apiKey = apiKey, request = request)
+                val responseText = response.content?.firstOrNull()?.text
                 
-                responseText ?: "Error: Received empty response from OpenAI."
+                responseText ?: "Error: Received empty response from Anthropic."
             } catch (e: retrofit2.HttpException) {
-                if (e.code() == 401) {
+                if (e.code() == 401 || e.code() == 403) {
                     "Error: API authentication failed or invalid API key."
                 } else if (e.code() == 429) {
                     "Error: Rate limit exceeded. Please try again later."
@@ -72,8 +72,8 @@ class OpenAIProvider(
     ): CodeChangeProposal {
         return withContext(Dispatchers.IO) {
             val apiKey = providedApiKey ?: ""
-            if (apiKey.isBlank() || apiKey == "MY_OPENAI_API_KEY" || apiKey == "YOUR_OPENAI_API_KEY") {
-                throw IllegalStateException("Error: OpenAI API key is missing or invalid. Please set it in Settings.")
+            if (apiKey.isBlank() || apiKey == "MY_ANTHROPIC_API_KEY" || apiKey == "YOUR_ANTHROPIC_API_KEY") {
+                throw IllegalStateException("Error: Anthropic API key is missing or invalid. Please set it in Settings.")
             }
 
             val systemInstructionText = buildString {
@@ -123,25 +123,27 @@ class OpenAIProvider(
                         }
                     }
                 }
+                
+                // Add explicit instruction to only output JSON for Claude
+                append("\n\nIMPORTANT: Output ONLY valid JSON matching the schema above. Do not include any markdown formatting like ```json or any other text before or after the JSON object.")
             }
 
             val messages = listOf(
-                OpenAIMessage(role = "system", content = systemInstructionText),
-                OpenAIMessage(role = "user", content = request)
+                AnthropicMessage(role = "user", content = request)
             )
 
-            val chatRequest = OpenAIChatRequest(
+            val apiRequest = AnthropicRequest(
                 model = model,
                 messages = messages,
-                responseFormat = OpenAIResponseFormat(type = "json_object")
+                system = systemInstructionText
             )
 
             try {
-                val response = OpenAIRetrofitClient.service.createChatCompletion("Bearer $apiKey", request = chatRequest)
-                var responseText = response.choices?.firstOrNull()?.message?.content
-                    ?: throw IllegalStateException("Error: Received empty response from OpenAI.")
+                val response = AnthropicRetrofitClient.service.createMessage(apiKey = apiKey, request = apiRequest)
+                var responseText = response.content?.firstOrNull()?.text
+                    ?: throw IllegalStateException("Error: Received empty response from Anthropic.")
 
-                // Clean up possible markdown json blocks
+                // Clean up possible markdown json blocks just in case
                 if (responseText.startsWith("```json")) {
                     responseText = responseText.substringAfter("```json")
                 }
@@ -153,7 +155,7 @@ class OpenAIProvider(
                 }
                 responseText = responseText.trim()
 
-                val adapter = OpenAIRetrofitClient.moshi.adapter(CodeChangeProposal::class.java)
+                val adapter = AnthropicRetrofitClient.moshi.adapter(CodeChangeProposal::class.java)
                 val proposal = adapter.fromJson(responseText)
                     ?: throw IllegalStateException("Error: Failed to parse AI response into CodeChangeProposal.")
 

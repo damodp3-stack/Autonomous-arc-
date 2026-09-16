@@ -64,7 +64,8 @@ class WorkspaceViewModel(
     private val messageRepository: MessageRepository,
     private val projectRepository: ProjectRepository,
     val fileRepository: ProjectFileRepository,
-    private val aiFactory: com.example.ai.AIFactory
+    private val aiFactory: com.example.ai.AIFactory,
+    val apiKeyManager: com.example.ai.APIKeyManager
 ) : ViewModel() {
 
     private val codeChangeApplier = com.example.ai.CodeChangeApplier(fileRepository)
@@ -114,6 +115,21 @@ class WorkspaceViewModel(
 
     private val _isBuilding = MutableStateFlow(false)
     val isBuilding: StateFlow<Boolean> = _isBuilding.asStateFlow()
+
+    private val _isAutonomousMode = MutableStateFlow(false)
+    val isAutonomousMode: StateFlow<Boolean> = _isAutonomousMode.asStateFlow()
+    
+    private val _isAutonomousRunning = MutableStateFlow(false)
+    val isAutonomousRunning: StateFlow<Boolean> = _isAutonomousRunning.asStateFlow()
+
+    fun toggleAutonomousMode() {
+        _isAutonomousMode.value = !_isAutonomousMode.value
+    }
+    
+    fun stopAutonomousRun() {
+        _isAutonomousRunning.value = false
+    }
+
 
     init {
         viewModelScope.launch {
@@ -278,7 +294,7 @@ class WorkspaceViewModel(
         val result = _applyResult.value as? com.example.ai.ApplyResult.Success ?: return
         viewModelScope.launch {
             try {
-                codeChangeApplier.rollback(result.createdFileIds, result.snapshot)
+                codeChangeApplier.rollback(projectId, result.createdFileIds, result.snapshot)
                 _proposalState.value = ProposalState.IDLE
                 _currentProposal.value = null
                 _applyResult.value = null
@@ -307,12 +323,13 @@ class WorkspaceViewModelFactory(
     private val messageRepository: MessageRepository,
     private val projectRepository: ProjectRepository,
     val fileRepository: ProjectFileRepository,
-    private val aiFactory: com.example.ai.AIFactory
+    private val aiFactory: com.example.ai.AIFactory,
+    private val apiKeyManager: com.example.ai.APIKeyManager
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(WorkspaceViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            return WorkspaceViewModel(projectId, messageRepository, projectRepository, fileRepository, aiFactory) as T
+            return WorkspaceViewModel(projectId, messageRepository, projectRepository, fileRepository, aiFactory, apiKeyManager) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }
