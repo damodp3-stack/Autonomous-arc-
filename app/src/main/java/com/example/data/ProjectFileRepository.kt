@@ -8,13 +8,13 @@ open class ProjectFileRepository(private val fileDao: ProjectFileDao, val fileSy
     open fun getFilesForProject(projectId: String): Flow<List<ProjectFileEntity>> =
         fileDao.getFilesForProject(projectId)
 
-    suspend fun getFile(fileId: String): ProjectFileEntity? =
+    open suspend fun getFile(fileId: String): ProjectFileEntity? =
         fileDao.getFile(fileId)
 
-    suspend fun getFileByPath(projectId: String, path: String): ProjectFileEntity? =
+    open suspend fun getFileByPath(projectId: String, path: String): ProjectFileEntity? =
         fileDao.getFileByPath(projectId, path)
 
-    suspend fun createFileWithBytes(
+    open suspend fun createFileWithBytes(
         projectId: String,
         path: String,
         content: ByteArray,
@@ -44,7 +44,7 @@ open class ProjectFileRepository(private val fileDao: ProjectFileDao, val fileSy
         return newFile
     }
 
-    suspend fun createFile(
+    open suspend fun createFile(
         projectId: String,
         path: String,
         content: String = "",
@@ -75,7 +75,7 @@ open class ProjectFileRepository(private val fileDao: ProjectFileDao, val fileSy
         return newFile
     }
 
-    suspend fun restoreFile(file: ProjectFileEntity): Boolean {
+    open suspend fun restoreFile(file: ProjectFileEntity): Boolean {
         if (!file.isDirectory) {
             val success = fileSystem.writeFile(file.projectId, file.path, file.content)
             if (!success) return false
@@ -87,7 +87,7 @@ open class ProjectFileRepository(private val fileDao: ProjectFileDao, val fileSy
         return true
     }
 
-    suspend fun updateFileContent(fileId: String, newContent: String): Boolean {
+    open suspend fun updateFileContent(fileId: String, newContent: String): Boolean {
         val file = fileDao.getFile(fileId)
         if (file != null) {
             val success = fileSystem.writeFile(file.projectId, file.path, newContent)
@@ -100,7 +100,7 @@ open class ProjectFileRepository(private val fileDao: ProjectFileDao, val fileSy
         return false
     }
 
-    suspend fun renameFile(fileId: String, newPath: String): Boolean {
+    open suspend fun renameFile(fileId: String, newPath: String): Boolean {
         val file = fileDao.getFile(fileId)
         if (file != null) {
             val success = fileSystem.renameFile(file.projectId, file.path, newPath)
@@ -123,7 +123,7 @@ open class ProjectFileRepository(private val fileDao: ProjectFileDao, val fileSy
         return false
     }
 
-    suspend fun deleteFile(fileId: String): Boolean {
+    open suspend fun deleteFile(fileId: String): Boolean {
         val file = fileDao.getFile(fileId)
         if (file != null) {
             val success = fileSystem.deleteFile(file.projectId, file.path)
@@ -166,24 +166,24 @@ open class ProjectFileRepository(private val fileDao: ProjectFileDao, val fileSy
         }
     }
 
-    suspend fun writeStagingFileBytes(stagingProjectId: String, path: String, content: ByteArray): Boolean {
+    open suspend fun writeStagingFileBytes(stagingProjectId: String, path: String, content: ByteArray): Boolean {
         return fileSystem.writeFileBytes(stagingProjectId, path, content)
     }
 
-    suspend fun createStagingDirectory(stagingProjectId: String, path: String): Boolean {
+    open suspend fun createStagingDirectory(stagingProjectId: String, path: String): Boolean {
         return fileSystem.createDirectory(stagingProjectId, path)
     }
 
-    suspend fun clearStagingProject(stagingProjectId: String) {
+    open suspend fun clearStagingProject(stagingProjectId: String) {
         fileSystem.deleteProject(stagingProjectId)
     }
 
-    suspend fun clearFilesForProject(projectId: String) {
+    open suspend fun clearFilesForProject(projectId: String) {
         fileSystem.deleteProject(projectId)
         fileDao.clearFilesForProject(projectId)
     }
 
-    suspend fun replaceProjectWorkspace(projectId: String, stagingProjectId: String, newFiles: List<ProjectFileEntity>): Boolean {
+    open suspend fun replaceProjectWorkspace(projectId: String, stagingProjectId: String, newFiles: List<ProjectFileEntity>): Boolean {
         // Keep backup of room entities
         val oldFiles = fileDao.getFilesForProject(projectId).firstOrNull() ?: emptyList()
         

@@ -9,5 +9,5 @@ open class MessageRepository(private val messageDao: MessageDao) {
 
     open suspend fun insert(message: MessageEntity) = messageDao.insertMessage(message)
 
-    suspend fun clearMessagesForProject(projectId: String) = messageDao.clearMessages(projectId)
+    open suspend fun clearMessagesForProject(projectId: String) = messageDao.clearMessages(projectId)
 }

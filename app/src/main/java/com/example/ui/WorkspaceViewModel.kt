@@ -118,16 +118,20 @@ class WorkspaceViewModel(
 
     private val _isAutonomousMode = MutableStateFlow(false)
     val isAutonomousMode: StateFlow<Boolean> = _isAutonomousMode.asStateFlow()
+
+    val autonomousEngine = com.example.ai.AutonomousExecutionEngine(
+        projectId, fileRepository, messageRepository, codeChangeApplier, aiFactory
+    )
+
     
-    private val _isAutonomousRunning = MutableStateFlow(false)
-    val isAutonomousRunning: StateFlow<Boolean> = _isAutonomousRunning.asStateFlow()
+
 
     fun toggleAutonomousMode() {
         _isAutonomousMode.value = !_isAutonomousMode.value
     }
     
     fun stopAutonomousRun() {
-        _isAutonomousRunning.value = false
+        autonomousEngine.stop()
     }
 
 

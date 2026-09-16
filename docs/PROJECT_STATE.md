@@ -6,7 +6,13 @@ This document represents the current actual state of the repository.
 Phase 4 — True Filesystem Workspace (Completed).
 
 **Completed**
-- True Autonomous Pipeline for iterative development.
+- Autonomous execution engine.
+- Bounded execution with configurable max iterations.
+- State machine (IDLE, GENERATING, APPLYING, VERIFYING, CONTINUING, STOPPED, BLOCKED, COMPLETED).
+- Coroutine-based structured cancellation.
+- Rollback-aware execution loop.
+- Execution history tracking per step.
+
 - Actual implementations for Anthropic and OpenAI REST clients.
 - UI for entering and managing custom API keys via SecureAPIKeyManager.
 - GitHub Integration (Clone, Commit, Push, Conflict Detection).
@@ -31,7 +37,12 @@ Phase 4 — True Filesystem Workspace (Completed).
 - **True Filesystem Workspace completed.** Project files are securely managed, written to, and synchronized with the real Android private filesystem.
 
 **Pending**
-
+- Token/usage dashboard.
+- Media Vault.
+- Ideas Vault.
+- Cloud synchronization.
+- Advanced provider fallback.
+- Production hardening.
 
 
 - Media/Ideas Vault.

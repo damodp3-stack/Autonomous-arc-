@@ -234,7 +234,10 @@ fun WorkspaceScreen(viewModel: WorkspaceViewModel, onBack: () -> Unit) {
     val currentProposal by viewModel.currentProposal.collectAsStateWithLifecycle()
     val proposalError by viewModel.proposalError.collectAsStateWithLifecycle()
     val isAutonomousMode by viewModel.isAutonomousMode.collectAsStateWithLifecycle()
-    val isAutonomousRunning by viewModel.isAutonomousRunning.collectAsStateWithLifecycle()
+    val autonomousState by viewModel.autonomousEngine.state.collectAsStateWithLifecycle()
+    val autonomousIteration by viewModel.autonomousEngine.iteration.collectAsStateWithLifecycle()
+    val autonomousAction by viewModel.autonomousEngine.lastAction.collectAsStateWithLifecycle()
+    val isAutonomousRunning = autonomousState != com.example.ai.AutonomousState.IDLE && autonomousState != com.example.ai.AutonomousState.COMPLETED && autonomousState != com.example.ai.AutonomousState.FAILED && autonomousState != com.example.ai.AutonomousState.BLOCKED && autonomousState != com.example.ai.AutonomousState.STOPPED
 
 
     var promptText by remember { mutableStateOf("") }
@@ -493,6 +496,15 @@ fun WorkspaceScreen(viewModel: WorkspaceViewModel, onBack: () -> Unit) {
                                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
+                                        if (isAutonomousRunning) {
+                                            Text(
+                                                text = "Iter $autonomousIteration | $autonomousAction",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = 1,
+                                                modifier = Modifier.weight(1f, fill = false)
+                                            )
+                                        }
                                         if (isAutonomousRunning) {
                                             Button(
                                                 onClick = { viewModel.stopAutonomousRun() },
