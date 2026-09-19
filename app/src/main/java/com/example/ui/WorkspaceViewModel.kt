@@ -130,6 +130,13 @@ class WorkspaceViewModel(
         _isAutonomousMode.value = !_isAutonomousMode.value
     }
     
+    fun startAutonomousRun(goal: String) {
+        if (goal.isBlank()) return
+        viewModelScope.launch {
+            autonomousEngine.start(goal, _selectedProvider.value, _projectName.value)
+        }
+    }
+
     fun stopAutonomousRun() {
         autonomousEngine.stop()
     }
@@ -196,6 +203,10 @@ class WorkspaceViewModel(
 
     fun sendMessage(text: String) {
         if (text.isBlank()) return
+        if (_isAutonomousMode.value) {
+            startAutonomousRun(text)
+            return
+        }
         viewModelScope.launch {
             messageRepository.insert(MessageEntity(projectId = projectId, text = text, isUser = true))
             _isBuilding.value = true

@@ -239,6 +239,8 @@ fun WorkspaceScreen(viewModel: WorkspaceViewModel, onBack: () -> Unit) {
     val autonomousAction by viewModel.autonomousEngine.lastAction.collectAsStateWithLifecycle()
     val autonomousPlan by viewModel.autonomousEngine.currentPlan.collectAsStateWithLifecycle()
     val autonomousTaskIndex by viewModel.autonomousEngine.currentTaskIndex.collectAsStateWithLifecycle()
+    val autonomousRetryCount by viewModel.autonomousEngine.retryCount.collectAsStateWithLifecycle()
+    val autonomousError by viewModel.autonomousEngine.lastError.collectAsStateWithLifecycle()
     val isAutonomousRunning = autonomousState != com.example.ai.AutonomousState.IDLE && autonomousState != com.example.ai.AutonomousState.COMPLETED && autonomousState != com.example.ai.AutonomousState.FAILED && autonomousState != com.example.ai.AutonomousState.BLOCKED && autonomousState != com.example.ai.AutonomousState.STOPPED
 
 
@@ -498,31 +500,40 @@ fun WorkspaceScreen(viewModel: WorkspaceViewModel, onBack: () -> Unit) {
                                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        if (isAutonomousRunning) {
+                                        if (isAutonomousRunning || autonomousPlan != null) {
                                             Column(modifier = Modifier.weight(1f)) {
                                                 if (autonomousPlan != null) {
                                                     Text("Goal: ${autonomousPlan!!.goal}", style = MaterialTheme.typography.labelMedium, maxLines = 1)
                                                     if (autonomousTaskIndex >= 0 && autonomousTaskIndex < autonomousPlan!!.tasks.size) {
                                                         val currentTask = autonomousPlan!!.tasks[autonomousTaskIndex]
                                                         Text(
-                                                            text = "Task ${autonomousTaskIndex + 1}/${autonomousPlan!!.tasks.size}: ${currentTask.description}",
+                                                            text = "Task ${autonomousTaskIndex + 1}/${autonomousPlan!!.tasks.size}: ${currentTask.description} [${currentTask.status.name}]",
                                                             style = MaterialTheme.typography.labelSmall,
                                                             maxLines = 1
                                                         )
                                                     }
                                                 }
                                                 Text(
-                                                    text = "State: ${autonomousState.name} | Iter: $autonomousIteration",
+                                                    text = "State: ${autonomousState.name} | Iter: $autonomousIteration | Retries: $autonomousRetryCount",
                                                     style = MaterialTheme.typography.bodySmall,
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                                     maxLines = 1
                                                 )
-                                                Text(
-                                                    text = autonomousAction ?: "",
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                    maxLines = 1
-                                                )
+                                                if (!autonomousError.isNullOrBlank() && (autonomousState == com.example.ai.AutonomousState.BLOCKED || autonomousState == com.example.ai.AutonomousState.FAILED)) {
+                                                    Text(
+                                                        text = "Error: $autonomousError",
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.error,
+                                                        maxLines = 1
+                                                    )
+                                                } else {
+                                                    Text(
+                                                        text = autonomousAction ?: "",
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                        maxLines = 1
+                                                    )
+                                                }
                                             }
                                         }
                                         if (isAutonomousRunning) {
