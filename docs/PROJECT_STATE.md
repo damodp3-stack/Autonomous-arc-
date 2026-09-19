@@ -65,12 +65,6 @@ Phase 5 — Hardened Autonomous Execution Engine & Verification (Completed).
 **Errors / Bugs**
 - None verified at this time.
 
-**Known Limitations**
-
-
-
-- Code editor is a foundational version; it allows reading/writing text but lacks full IDE features like syntax highlighting.
-
 **Verified**
 - Multi-Provider AI Architecture compilation and routing (Verified).
 - File operations expanded to support RENAME with safe Apply/Rollback (Verified).
@@ -79,10 +73,18 @@ Phase 5 — Hardened Autonomous Execution Engine & Verification (Completed).
 - Gemini AI API integration via REST and Moshi (Verified compilation and mock switching).
 - File operations: create, edit, save, delete, rename (Verified).
 - Apply Engine Validation, Conflict Detection, Snapshot, and Rollback (Verified).
-- **True Filesystem Workspace and synchronization (Verified with 100% test coverage).**
-- **GitHub Clone Engine with True Failure Safety (Verified with extensive edge-case tests).**
+- **True Filesystem Workspace and synchronization (Verified with test coverage).**
+- **GitHub Clone Engine with True Failure Safety (Verified with edge-case tests).**
 - **GitHub Commit & Push Engine (Verified with test coverage for binary support and ref update safety).**
-- **Autonomous Execution Engine & Safety Loop (Verified with comprehensive Robolectric unit test suite covering plan parsing, cycle detection, task progression, retry limits, rollbacks, validation, and cancellation).**
+- **Autonomous Execution Engine & Safety Loop Verification:**
+  - Exact test task: `gradle :app:testDebugUnitTest` (33 actionable tasks, 17 executed, 16 up-to-date; 98/98 total unit tests passed, 0 failures, 0 errors, 0 skipped).
+  - Autonomous engine test suite: `AutonomousExecutionEngineTest` (28/28 tests passed, 0 failures, 0 skipped) covering plan parsing, empty/malformed/exceeded tasks, duplicate task IDs, unknown dependencies, cycle detection, dependency ordering, independent tasks, false completion defenses, proposal security validation (path traversal, blank, duplicate paths, invalid renames), retry limits, verification rollback, max iterations boundary, cancellation, and immutable state/history.
+  - Exact build task: `gradle :app:assembleDebug` (39 actionable tasks: 3 executed, 7 from cache, 29 up-to-date, BUILD SUCCESSFUL). Verified Kotlin compilation, Android resource compilation, Compose compilation, manifest/resources, generated code, and APK packaging.
+
+**Known Limitations**
+- Autonomous planning and execution relies on structured JSON responses; non-JSON or severely degraded network connectivity requires provider retry or fallback.
+- Code editor is a foundational version; it allows reading/writing text but lacks full IDE features like syntax highlighting.
+- High iteration runs (>10) are bounded by safety limits to prevent runaway loops or infinite token spend; users must re-trigger or increase iteration limits for very large projects.
 
 **Current Architecture**
 - Android app using Kotlin, Jetpack Compose.
