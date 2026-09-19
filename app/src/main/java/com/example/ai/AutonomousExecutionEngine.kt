@@ -114,7 +114,12 @@ open class AutonomousExecutionEngine(
         _executionHistory.value = _executionHistory.value + event
     }
 
-    suspend fun start(goal: String, providerName: String, projectName: String) = coroutineScope {
+    suspend fun start(
+        goal: String,
+        providerName: String,
+        projectName: String,
+        model: String? = null
+    ) = coroutineScope {
         if (_state.value != AutonomousState.IDLE &&
             _state.value != AutonomousState.COMPLETED &&
             _state.value != AutonomousState.STOPPED &&
@@ -133,7 +138,7 @@ open class AutonomousExecutionEngine(
 
         try {
             coroutineContext.ensureActive()
-            val aiProvider = aiFactory.getProvider(projectName, providerName)
+            val aiProvider = aiFactory.getProvider(projectName, providerName, model)
 
             _state.value = AutonomousState.PLANNING
             _lastAction.value = "Creating execution plan..."

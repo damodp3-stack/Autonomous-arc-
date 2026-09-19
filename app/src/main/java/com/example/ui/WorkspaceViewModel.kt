@@ -65,14 +65,30 @@ class WorkspaceViewModel(
     private val projectRepository: ProjectRepository,
     val fileRepository: ProjectFileRepository,
     private val aiFactory: com.example.ai.AIFactory,
-    val apiKeyManager: com.example.ai.APIKeyManager
+    val apiKeyManager: com.example.ai.APIKeyManager,
+    val configRepository: com.example.data.AIProviderConfigRepository? = null
 ) : ViewModel() {
 
     private val codeChangeApplier = com.example.ai.CodeChangeApplier(fileRepository)
 
     val availableProviders = listOf("Gemini", "OpenAI", "Anthropic")
-    private val _selectedProvider = MutableStateFlow(availableProviders.firstOrNull() ?: "Gemini")
+    private val _selectedProvider = MutableStateFlow("Gemini")
     val selectedProvider: StateFlow<String> = _selectedProvider.asStateFlow()
+
+    private val _selectedModel = MutableStateFlow(com.example.ai.AIModelRegistry.getDefaultModel("Gemini"))
+    val selectedModel: StateFlow<String> = _selectedModel.asStateFlow()
+
+    private val _availableModels = MutableStateFlow(com.example.ai.AIModelRegistry.getAvailableModels("Gemini"))
+    val availableModels: StateFlow<List<String>> = _availableModels.asStateFlow()
+
+    private val _latestUsage = MutableStateFlow<com.example.ai.TokenUsage?>(null)
+    val latestUsage: StateFlow<com.example.ai.TokenUsage?> = _latestUsage.asStateFlow()
+
+    private val _isTestingConnection = MutableStateFlow(false)
+    val isTestingConnection: StateFlow<Boolean> = _isTestingConnection.asStateFlow()
+
+    private val _connectionTestResult = MutableStateFlow<String?>(null)
+    val connectionTestResult: StateFlow<String?> = _connectionTestResult.asStateFlow()
 
     private val _proposalState = MutableStateFlow(ProposalState.IDLE)
     val proposalState: StateFlow<ProposalState> = _proposalState.asStateFlow()
@@ -88,6 +104,48 @@ class WorkspaceViewModel(
 
     fun setProvider(providerName: String) {
         _selectedProvider.value = providerName
+        _availableModels.value = com.example.ai.AIModelRegistry.getAvailableModels(providerName)
+        viewModelScope.launch {
+            val savedModel = configRepository?.getConfigByProviderType(providerName)?.selectedModel
+            val newModel = savedModel?.ifBlank { null } ?: com.example.ai.AIModelRegistry.getDefaultModel(providerName)
+            _selectedModel.value = newModel
+            configRepository?.setActiveProviderType(providerName)
+        }
+    }
+
+    fun setModel(modelName: String) {
+        _selectedModel.value = modelName
+        viewModelScope.launch {
+            configRepository?.updateModelForProvider(_selectedProvider.value, modelName)
+        }
+    }
+
+    fun saveProviderSettings(providerType: String, apiKey: String, model: String) {
+        apiKeyManager.saveApiKey(providerType, apiKey.trim())
+        viewModelScope.launch {
+            configRepository?.updateModelForProvider(providerType, model.trim())
+            if (_selectedProvider.value.equals(providerType, ignoreCase = true)) {
+                _selectedModel.value = model.trim()
+            }
+        }
+    }
+
+    fun testConnection(providerType: String, apiKey: String, model: String) {
+        viewModelScope.launch {
+            _isTestingConnection.value = true
+            _connectionTestResult.value = null
+            val result = aiFactory.testConnection(providerType, apiKey, model)
+            _connectionTestResult.value = if (result.isSuccess) {
+                result.getOrNull()
+            } else {
+                "Error: ${result.exceptionOrNull()?.message ?: "Unknown error"}"
+            }
+            _isTestingConnection.value = false
+        }
+    }
+
+    fun clearConnectionTestResult() {
+        _connectionTestResult.value = null
     }
 
     val messages: StateFlow<List<MessageEntity>> = messageRepository.getMessagesForProject(projectId)
@@ -133,7 +191,7 @@ class WorkspaceViewModel(
     fun startAutonomousRun(goal: String) {
         if (goal.isBlank()) return
         viewModelScope.launch {
-            autonomousEngine.start(goal, _selectedProvider.value, _projectName.value)
+            autonomousEngine.start(goal, _selectedProvider.value, _projectName.value, _selectedModel.value)
         }
     }
 
@@ -148,6 +206,21 @@ class WorkspaceViewModel(
             projectRepository.getProject(projectId).collect { project ->
                 if (project != null) {
                     _projectName.value = project.name
+                }
+            }
+        }
+        viewModelScope.launch {
+            configRepository?.initializeDefaultConfigsIfNeeded()
+            configRepository?.getActiveConfig()?.collect { active ->
+                if (active != null) {
+                    val pName = when (active.providerType.uppercase()) {
+                        "OPENAI" -> "OpenAI"
+                        "ANTHROPIC" -> "Anthropic"
+                        else -> "Gemini"
+                    }
+                    _selectedProvider.value = pName
+                    _availableModels.value = com.example.ai.AIModelRegistry.getAvailableModels(pName)
+                    _selectedModel.value = active.selectedModel.ifBlank { com.example.ai.AIModelRegistry.getDefaultModel(pName) }
                 }
             }
         }
@@ -210,13 +283,14 @@ class WorkspaceViewModel(
         viewModelScope.launch {
             messageRepository.insert(MessageEntity(projectId = projectId, text = text, isUser = true))
             _isBuilding.value = true
-            val aiProvider = aiFactory.getProvider(_projectName.value, _selectedProvider.value)
+            val aiProvider = aiFactory.getProvider(_projectName.value, _selectedProvider.value, _selectedModel.value)
             val projectContext = ProjectContext(
                 projectName = _projectName.value,
                 files = files.value,
                 currentOpenFile = _selectedFile.value
             )
             val aiResponse = aiProvider.generateResponse(text, messages.value, projectContext)
+            _latestUsage.value = aiProvider.getLatestUsage()
             messageRepository.insert(MessageEntity(
                 projectId = projectId,
                 text = aiResponse,
@@ -234,7 +308,7 @@ class WorkspaceViewModel(
             _currentProposal.value = null
             _proposalError.value = null
             try {
-                val aiProvider = aiFactory.getProvider(_projectName.value, _selectedProvider.value)
+                val aiProvider = aiFactory.getProvider(_projectName.value, _selectedProvider.value, _selectedModel.value)
                 val projectContext = ProjectContext(
                     projectName = _projectName.value,
                     files = files.value,
@@ -242,6 +316,7 @@ class WorkspaceViewModel(
                 )
                 val proposal = aiProvider.proposeCodeChanges(request, projectContext)
                 _currentProposal.value = proposal
+                _latestUsage.value = proposal.tokenUsage ?: aiProvider.getLatestUsage()
                 
                 messageRepository.insert(MessageEntity(
                     projectId = projectId,
@@ -339,12 +414,21 @@ class WorkspaceViewModelFactory(
     private val projectRepository: ProjectRepository,
     val fileRepository: ProjectFileRepository,
     private val aiFactory: com.example.ai.AIFactory,
-    private val apiKeyManager: com.example.ai.APIKeyManager
+    private val apiKeyManager: com.example.ai.APIKeyManager,
+    private val configRepository: com.example.data.AIProviderConfigRepository? = null
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(WorkspaceViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            return WorkspaceViewModel(projectId, messageRepository, projectRepository, fileRepository, aiFactory, apiKeyManager) as T
+            return WorkspaceViewModel(
+                projectId,
+                messageRepository,
+                projectRepository,
+                fileRepository,
+                aiFactory,
+                apiKeyManager,
+                configRepository
+            ) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }

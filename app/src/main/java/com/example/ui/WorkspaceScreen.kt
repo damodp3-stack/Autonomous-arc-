@@ -227,6 +227,10 @@ fun WorkspaceScreen(viewModel: WorkspaceViewModel, onBack: () -> Unit) {
     val isBuilding by viewModel.isBuilding.collectAsStateWithLifecycle()
     val files by viewModel.files.collectAsStateWithLifecycle()
     var showGitHubDialog by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    var showSettingsDialog by remember { mutableStateOf(false) }
+    val selectedProvider by viewModel.selectedProvider.collectAsStateWithLifecycle()
+    val selectedModel by viewModel.selectedModel.collectAsStateWithLifecycle()
+    val latestUsage by viewModel.latestUsage.collectAsStateWithLifecycle()
     val selectedFile by viewModel.selectedFile.collectAsStateWithLifecycle()
     val editorContent by viewModel.editorContent.collectAsStateWithLifecycle()
     
@@ -305,9 +309,7 @@ fun WorkspaceScreen(viewModel: WorkspaceViewModel, onBack: () -> Unit) {
                     },
                     actions = {
                         val availableProviders = viewModel.availableProviders
-                        val selectedProvider by viewModel.selectedProvider.collectAsStateWithLifecycle()
-                        var providerMenuExpanded by remember { mutableStateOf(false) }
-    var showSettingsDialog by remember { mutableStateOf(false) }
+                        var modelMenuExpanded by remember { mutableStateOf(false) }
 
                         IconButton(onClick = { showGitHubDialog = true }) {
                             Icon(
@@ -318,25 +320,75 @@ fun WorkspaceScreen(viewModel: WorkspaceViewModel, onBack: () -> Unit) {
                         }
 
                         IconButton(onClick = { showSettingsDialog = true }) {
-                            Icon(Icons.Default.Settings, contentDescription = "Settings")
+                            Icon(Icons.Default.Settings, contentDescription = "AI Provider & Model Settings")
                         }
+
                         Box {
-                            TextButton(onClick = { providerMenuExpanded = true }) {
-                                Text(selectedProvider)
+                            FilledTonalButton(
+                                onClick = { modelMenuExpanded = true },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                modifier = Modifier.height(36.dp)
+                            ) {
+                                val shortModel = when {
+                                    selectedModel.length > 18 -> selectedModel.substringBefore("-2024").substringBefore("-preview")
+                                    else -> selectedModel
+                                }
+                                Text(
+                                    text = "$selectedProvider • $shortModel",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold
+                                )
                             }
+
                             DropdownMenu(
-                                expanded = providerMenuExpanded,
-                                onDismissRequest = { providerMenuExpanded = false }
+                                expanded = modelMenuExpanded,
+                                onDismissRequest = { modelMenuExpanded = false }
                             ) {
                                 availableProviders.forEach { provider ->
-                                    DropdownMenuItem(
-                                        text = { Text(provider) },
-                                        onClick = {
-                                            viewModel.setProvider(provider)
-                                            providerMenuExpanded = false
-                                        }
+                                    Text(
+                                        text = provider.uppercase(),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                                     )
+                                    val pModels = com.example.ai.AIModelRegistry.getAvailableModels(provider)
+                                    pModels.forEach { m ->
+                                        DropdownMenuItem(
+                                            text = {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    if (selectedProvider.equals(provider, ignoreCase = true) && selectedModel == m) {
+                                                        Text("✓ ", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                                                    } else {
+                                                        Spacer(modifier = Modifier.width(16.dp))
+                                                    }
+                                                    Text(m, style = MaterialTheme.typography.bodySmall)
+                                                }
+                                            },
+                                            onClick = {
+                                                if (!selectedProvider.equals(provider, ignoreCase = true)) {
+                                                    viewModel.setProvider(provider)
+                                                }
+                                                viewModel.setModel(m)
+                                                modelMenuExpanded = false
+                                            }
+                                        )
+                                    }
+                                    HorizontalDivider()
                                 }
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text("Configure API Keys & Models...", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                                        }
+                                    },
+                                    onClick = {
+                                        modelMenuExpanded = false
+                                        showSettingsDialog = true
+                                    }
+                                )
                             }
                         }
                     },
@@ -479,6 +531,28 @@ fun WorkspaceScreen(viewModel: WorkspaceViewModel, onBack: () -> Unit) {
                                         unfocusedBorderColor = Color.Transparent,
                                     )
                                 )
+
+                                if (latestUsage != null && (latestUsage!!.totalTokens ?: 0) > 0) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 8.dp, vertical = 2.dp),
+                                        horizontalArrangement = Arrangement.End,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f)
+                                        ) {
+                                            Text(
+                                                text = "Tokens: ${latestUsage!!.totalTokens} (${latestUsage!!.promptTokens ?: 0} in / ${latestUsage!!.completionTokens ?: 0} out)",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
+                                }
                                 
                                 HorizontalDivider(
                                     color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
@@ -699,6 +773,21 @@ fun WorkspaceScreen(viewModel: WorkspaceViewModel, onBack: () -> Unit) {
                             style = MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.Bold
                         )
+                        if (currentProposal!!.tokenUsage != null && (currentProposal!!.tokenUsage!!.totalTokens ?: 0) > 0) {
+                            val usage = currentProposal!!.tokenUsage!!
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer
+                            ) {
+                                Text(
+                                    text = "Tokens: ${usage.totalTokens} (${usage.promptTokens ?: 0} in / ${usage.completionTokens ?: 0} out)",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
                         Spacer(modifier = Modifier.height(8.dp))
                         
                         LazyColumn(
@@ -921,6 +1010,16 @@ fun WorkspaceScreen(viewModel: WorkspaceViewModel, onBack: () -> Unit) {
         com.example.ui.GitHubIntegrationDialog(
             viewModel = githubViewModel,
             onDismiss = { showGitHubDialog = false }
+        )
+    }
+
+    if (showSettingsDialog) {
+        AIProviderSettingsDialog(
+            viewModel = viewModel,
+            onDismiss = {
+                viewModel.clearConnectionTestResult()
+                showSettingsDialog = false
+            }
         )
     }
 }

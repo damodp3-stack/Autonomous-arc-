@@ -25,5 +25,6 @@ data class CodeChangeProposal(
     val summary: String,
     val explanation: String,
     val changes: List<FileChange>,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    val tokenUsage: TokenUsage? = null
 )

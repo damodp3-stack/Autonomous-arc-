@@ -61,7 +61,15 @@ data class Part(
 
 @JsonClass(generateAdapter = true)
 data class GenerateContentResponse(
-    val candidates: List<Candidate>? = null
+    val candidates: List<Candidate>? = null,
+    val usageMetadata: GeminiUsageMetadata? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class GeminiUsageMetadata(
+    val promptTokenCount: Int? = null,
+    val candidatesTokenCount: Int? = null,
+    val totalTokenCount: Int? = null
 )
 
 @JsonClass(generateAdapter = true)
@@ -104,12 +112,20 @@ object GeminiRetrofitClient {
     }
 }
 
-class GeminiAIProvider(private val projectName: String, private val providedApiKey: String? = null, private val model: String = "gemini-1.5-pro") : AIProvider {
+class GeminiAIProvider(
+    private val projectName: String,
+    private val providedApiKey: String? = null,
+    private val model: String = "gemini-1.5-pro"
+) : AIProvider {
+    private var latestUsage: TokenUsage? = null
+
+    override fun getLatestUsage(): TokenUsage? = latestUsage
+
     override suspend fun generateResponse(prompt: String, context: List<MessageEntity>, projectContext: ProjectContext?): String {
         return withContext(Dispatchers.IO) {
             val apiKey = providedApiKey ?: BuildConfig.GEMINI_API_KEY
             if (apiKey.isBlank() || apiKey == "MY_GEMINI_API_KEY" || apiKey == "YOUR_GEMINI_API_KEY") {
-                return@withContext "Error: Gemini API key is missing or invalid. Please check your .env configuration."
+                return@withContext "Error: Gemini API key is missing or invalid. Please check your API key in Settings."
             }
 
             // Convert conversation context to Gemini format
@@ -145,6 +161,13 @@ class GeminiAIProvider(private val projectName: String, private val providedApiK
 
             try {
                 val response = GeminiRetrofitClient.service.generateContent(model, apiKey, request)
+                latestUsage = response.usageMetadata?.let {
+                    TokenUsage(
+                        promptTokens = it.promptTokenCount,
+                        completionTokens = it.candidatesTokenCount,
+                        totalTokens = it.totalTokenCount
+                    )
+                }
                 val responseText = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
                 
                 if (responseText != null) {
@@ -154,20 +177,22 @@ class GeminiAIProvider(private val projectName: String, private val providedApiK
                 }
             } catch (e: retrofit2.HttpException) {
                 if (e.code() == 401 || e.code() == 403) {
-                    "Error: API authentication failed or invalid API key."
+                    "Error: Gemini API authentication failed. Invalid or expired API key."
+                } else if (e.code() == 404) {
+                    "Error: Model '$model' was not found or is unsupported for your Gemini API tier."
                 } else if (e.code() == 429) {
-                    "Error: Rate limit exceeded. Please try again later."
+                    "Error: Gemini rate limit exceeded. Please wait a moment or switch models."
                 } else if (e.code() >= 500) {
                     "Error: Gemini server error (${e.code()})."
                 } else {
-                    "Error: Unexpected API response (${e.code()})."
+                    "Error: Unexpected Gemini API response (${e.code()})."
                 }
             } catch (e: java.net.UnknownHostException) {
                 "Error: No internet connection or network failure."
             } catch (e: java.net.SocketTimeoutException) {
                 "Error: Request timed out."
             } catch (e: Exception) {
-                "Error: Network exception or unknown error occurred."
+                "Error: Network exception or unknown error occurred: ${e.message}"
             }
         }
     }
@@ -252,6 +277,13 @@ class GeminiAIProvider(private val projectName: String, private val providedApiK
 
             try {
                 val response = GeminiRetrofitClient.service.generateContent(model, apiKey, generateContentRequest)
+                latestUsage = response.usageMetadata?.let {
+                    TokenUsage(
+                        promptTokens = it.promptTokenCount,
+                        completionTokens = it.candidatesTokenCount,
+                        totalTokens = it.totalTokenCount
+                    )
+                }
                 var responseText = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
                     ?: throw IllegalStateException("Error: Received empty response from Gemini.")
                 
@@ -279,7 +311,16 @@ class GeminiAIProvider(private val projectName: String, private val providedApiK
                     change
                 }
 
-                proposal.copy(changes = validatedChanges)
+                proposal.copy(changes = validatedChanges, tokenUsage = latestUsage)
+            } catch (e: retrofit2.HttpException) {
+                val errorMsg = when (e.code()) {
+                    401, 403 -> "Authentication failed. Invalid Gemini API key. Please check your key in Settings."
+                    404 -> "Model '$model' was not found or is unsupported for your Gemini API tier."
+                    429 -> "Rate limit exceeded for Gemini. Please wait a moment or switch models/providers."
+                    in 500..599 -> "Gemini service temporarily unavailable (${e.code()})."
+                    else -> "Unexpected API response from Gemini (${e.code()})."
+                }
+                throw IllegalStateException(errorMsg, e)
             } catch (e: Exception) {
                 throw IllegalStateException("Failed to generate code proposal: ${e.message}", e)
             }

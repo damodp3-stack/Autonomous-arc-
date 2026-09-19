@@ -18,6 +18,9 @@ interface AIProviderConfigDao {
     @Query("SELECT * FROM ai_provider_config WHERE id = :id")
     suspend fun getConfigById(id: String): AIProviderConfigEntity?
 
+    @Query("SELECT * FROM ai_provider_config WHERE UPPER(providerType) = UPPER(:providerType) LIMIT 1")
+    suspend fun getConfigByProviderType(providerType: String): AIProviderConfigEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertConfig(config: AIProviderConfigEntity)
 
@@ -32,4 +35,7 @@ interface AIProviderConfigDao {
     
     @Query("UPDATE ai_provider_config SET isActive = 1 WHERE id = :id")
     suspend fun setActive(id: String)
+
+    @Query("UPDATE ai_provider_config SET isActive = 1 WHERE UPPER(providerType) = UPPER(:providerType)")
+    suspend fun setActiveByProviderType(providerType: String)
 }

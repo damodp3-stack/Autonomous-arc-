@@ -7,8 +7,11 @@ import kotlinx.coroutines.withContext
 class AnthropicProvider(
     private val projectName: String,
     private val providedApiKey: String? = null,
-    private val model: String = "claude-3-5-sonnet-20240620"
+    val model: String = "claude-3-5-sonnet-20241022"
 ) : AIProvider {
+    private var latestUsage: TokenUsage? = null
+
+    override fun getLatestUsage(): TokenUsage? = latestUsage
 
     override suspend fun generateResponse(
         prompt: String,
@@ -49,16 +52,29 @@ class AnthropicProvider(
 
             try {
                 val response = AnthropicRetrofitClient.service.createMessage(apiKey = apiKey, request = request)
+                latestUsage = response.usage?.let {
+                    val inTokens = it.inputTokens ?: 0
+                    val outTokens = it.outputTokens ?: 0
+                    TokenUsage(
+                        promptTokens = it.inputTokens,
+                        completionTokens = it.outputTokens,
+                        totalTokens = inTokens + outTokens
+                    )
+                }
                 val responseText = response.content?.firstOrNull()?.text
                 
                 responseText ?: "Error: Received empty response from Anthropic."
             } catch (e: retrofit2.HttpException) {
                 if (e.code() == 401 || e.code() == 403) {
-                    "Error: API authentication failed or invalid API key."
+                    "Error: Anthropic authentication failed. Invalid API key."
+                } else if (e.code() == 404) {
+                    "Error: Model '$model' not found or unsupported by Anthropic."
                 } else if (e.code() == 429) {
-                    "Error: Rate limit exceeded. Please try again later."
+                    "Error: Anthropic rate limit exceeded. Please wait or try again later."
+                } else if (e.code() >= 500) {
+                    "Error: Anthropic server error (${e.code()})."
                 } else {
-                    "Error: Unexpected API response (${e.code()})."
+                    "Error: Unexpected Anthropic API response (${e.code()})."
                 }
             } catch (e: Exception) {
                 "Error: Network exception or unknown error occurred: ${e.message}"
@@ -140,6 +156,15 @@ class AnthropicProvider(
 
             try {
                 val response = AnthropicRetrofitClient.service.createMessage(apiKey = apiKey, request = apiRequest)
+                latestUsage = response.usage?.let {
+                    val inTokens = it.inputTokens ?: 0
+                    val outTokens = it.outputTokens ?: 0
+                    TokenUsage(
+                        promptTokens = it.inputTokens,
+                        completionTokens = it.outputTokens,
+                        totalTokens = inTokens + outTokens
+                    )
+                }
                 var responseText = response.content?.firstOrNull()?.text
                     ?: throw IllegalStateException("Error: Received empty response from Anthropic.")
 
@@ -192,8 +217,17 @@ class AnthropicProvider(
                     change
                 }
 
-                proposal.copy(changes = validatedChanges)
+                proposal.copy(changes = validatedChanges, tokenUsage = latestUsage)
 
+            } catch (e: retrofit2.HttpException) {
+                val errorMsg = when (e.code()) {
+                    401, 403 -> "Authentication failed. Invalid Anthropic API key. Please check your key in Settings."
+                    404 -> "Model '$model' was not found or is unsupported by Anthropic."
+                    429 -> "Rate limit exceeded for Anthropic. Please wait or try again later."
+                    in 500..599 -> "Anthropic service temporarily unavailable (${e.code()})."
+                    else -> "Unexpected API response from Anthropic (${e.code()})."
+                }
+                throw IllegalStateException(errorMsg, e)
             } catch (e: Exception) {
                 throw IllegalStateException("Failed to generate code proposal: ${e.message}", e)
             }

@@ -3,9 +3,15 @@ package com.example.ai
 
 
 import com.example.data.MessageEntity
-
-
 import com.example.data.ProjectFileEntity
+import com.squareup.moshi.JsonClass
+
+@JsonClass(generateAdapter = true)
+data class TokenUsage(
+    val promptTokens: Int? = null,
+    val completionTokens: Int? = null,
+    val totalTokens: Int? = null
+)
 
 data class ProjectContext(
     val projectName: String,
@@ -16,9 +22,10 @@ data class ProjectContext(
 interface AIProvider {
     suspend fun generateResponse(prompt: String, context: List<MessageEntity>, projectContext: ProjectContext? = null): String
     suspend fun proposeCodeChanges(request: String, projectContext: ProjectContext): CodeChangeProposal
+    fun getLatestUsage(): TokenUsage? = null
 }
 
-class MockAIProvider : AIProvider {
+class MockAIProvider(private val model: String = "mock-default") : AIProvider {
     override suspend fun generateResponse(prompt: String, context: List<MessageEntity>, projectContext: ProjectContext?): String {
         val fileInfo = projectContext?.currentOpenFile?.let { " Currently viewing: ${it.name}." } ?: ""
         return "Building modular architecture based on: \"$prompt\".$fileInfo\nI've added the initial scaffolding for your request.\n\n```kotlin\n// TODO: Implement requested features\n```\n\nWhat's next?"
@@ -36,7 +43,10 @@ class MockAIProvider : AIProvider {
                     originalContent = projectContext.currentOpenFile?.content ?: "",
                     proposedContent = (projectContext.currentOpenFile?.content ?: "") + "\n// AI Mock Change"
                 )
-            )
+            ),
+            tokenUsage = null
         )
     }
+
+    override fun getLatestUsage(): TokenUsage? = null
 }

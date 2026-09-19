@@ -53,7 +53,8 @@ fun AppNavigation() {
                     projectRepository = projectRepository,
                     fileRepository = fileRepository,
                     aiFactory = aiFactory,
-                    apiKeyManager = apiKeyManager
+                    apiKeyManager = apiKeyManager,
+                    configRepository = aiProviderConfigRepository
                 )
             )
             

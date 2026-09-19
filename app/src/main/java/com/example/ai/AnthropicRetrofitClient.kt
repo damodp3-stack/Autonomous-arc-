@@ -33,8 +33,15 @@ data class AnthropicContent(
 )
 
 @JsonClass(generateAdapter = true)
+data class AnthropicUsage(
+    @Json(name = "input_tokens") val inputTokens: Int? = null,
+    @Json(name = "output_tokens") val outputTokens: Int? = null
+)
+
+@JsonClass(generateAdapter = true)
 data class AnthropicResponse(
-    @Json(name = "content") val content: List<AnthropicContent>?
+    @Json(name = "content") val content: List<AnthropicContent>?,
+    @Json(name = "usage") val usage: AnthropicUsage? = null
 )
 
 interface AnthropicApiService {

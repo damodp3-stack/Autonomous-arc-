@@ -7,8 +7,11 @@ import kotlinx.coroutines.withContext
 class OpenAIProvider(
     private val projectName: String,
     private val providedApiKey: String? = null,
-    private val model: String = "gpt-4o"
+    val model: String = "gpt-4o"
 ) : AIProvider {
+    private var latestUsage: TokenUsage? = null
+
+    override fun getLatestUsage(): TokenUsage? = latestUsage
 
     override suspend fun generateResponse(
         prompt: String,
@@ -49,16 +52,27 @@ class OpenAIProvider(
 
             try {
                 val response = OpenAIRetrofitClient.service.createChatCompletion("Bearer $apiKey", request = request)
+                latestUsage = response.usage?.let {
+                    TokenUsage(
+                        promptTokens = it.promptTokens,
+                        completionTokens = it.completionTokens,
+                        totalTokens = it.totalTokens
+                    )
+                }
                 val responseText = response.choices?.firstOrNull()?.message?.content
                 
                 responseText ?: "Error: Received empty response from OpenAI."
             } catch (e: retrofit2.HttpException) {
                 if (e.code() == 401) {
-                    "Error: API authentication failed or invalid API key."
+                    "Error: OpenAI authentication failed. Invalid API key."
+                } else if (e.code() == 404) {
+                    "Error: Model '$model' not found or unsupported by your OpenAI account."
                 } else if (e.code() == 429) {
-                    "Error: Rate limit exceeded. Please try again later."
+                    "Error: OpenAI rate limit or quota exceeded. Please check your account usage."
+                } else if (e.code() >= 500) {
+                    "Error: OpenAI server error (${e.code()})."
                 } else {
-                    "Error: Unexpected API response (${e.code()})."
+                    "Error: Unexpected OpenAI API response (${e.code()})."
                 }
             } catch (e: Exception) {
                 "Error: Network exception or unknown error occurred: ${e.message}"
@@ -138,6 +152,13 @@ class OpenAIProvider(
 
             try {
                 val response = OpenAIRetrofitClient.service.createChatCompletion("Bearer $apiKey", request = chatRequest)
+                latestUsage = response.usage?.let {
+                    TokenUsage(
+                        promptTokens = it.promptTokens,
+                        completionTokens = it.completionTokens,
+                        totalTokens = it.totalTokens
+                    )
+                }
                 var responseText = response.choices?.firstOrNull()?.message?.content
                     ?: throw IllegalStateException("Error: Received empty response from OpenAI.")
 
@@ -190,8 +211,17 @@ class OpenAIProvider(
                     change
                 }
 
-                proposal.copy(changes = validatedChanges)
+                proposal.copy(changes = validatedChanges, tokenUsage = latestUsage)
 
+            } catch (e: retrofit2.HttpException) {
+                val errorMsg = when (e.code()) {
+                    401 -> "Authentication failed. Invalid OpenAI API key. Please check your key in Settings."
+                    404 -> "Model '$model' was not found or is unsupported by your OpenAI account."
+                    429 -> "Rate limit or quota exceeded for OpenAI. Please check your account quota or try again later."
+                    in 500..599 -> "OpenAI service temporarily unavailable (${e.code()})."
+                    else -> "Unexpected API response from OpenAI (${e.code()})."
+                }
+                throw IllegalStateException(errorMsg, e)
             } catch (e: Exception) {
                 throw IllegalStateException("Failed to generate code proposal: ${e.message}", e)
             }

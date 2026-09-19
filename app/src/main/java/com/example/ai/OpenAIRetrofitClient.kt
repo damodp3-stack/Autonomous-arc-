@@ -37,8 +37,16 @@ data class OpenAIChoice(
 )
 
 @JsonClass(generateAdapter = true)
+data class OpenAIUsage(
+    @Json(name = "prompt_tokens") val promptTokens: Int? = null,
+    @Json(name = "completion_tokens") val completionTokens: Int? = null,
+    @Json(name = "total_tokens") val totalTokens: Int? = null
+)
+
+@JsonClass(generateAdapter = true)
 data class OpenAIChatResponse(
-    @Json(name = "choices") val choices: List<OpenAIChoice>?
+    @Json(name = "choices") val choices: List<OpenAIChoice>?,
+    @Json(name = "usage") val usage: OpenAIUsage? = null
 )
 
 interface OpenAIApiService {
