@@ -8,6 +8,12 @@ Phase 4 — True Filesystem Workspace (Completed).
 **Completed**
 - Autonomous execution engine.
 - Bounded execution with configurable max iterations.
+- Real structured autonomous planning with strict JSON parsing.
+- Dependency-aware execution engine.
+- Bounded retry limits per task (max 2 failures).
+- Execution history with structured rollback support per task.
+- Tests for task creation, iteration limits, loop boundaries.
+
 - State machine (IDLE, GENERATING, APPLYING, VERIFYING, CONTINUING, STOPPED, BLOCKED, COMPLETED).
 - Coroutine-based structured cancellation.
 - Rollback-aware execution loop.

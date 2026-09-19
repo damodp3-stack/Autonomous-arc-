@@ -12,7 +12,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.isActive
-
+import org.json.JSONArray
+import org.json.JSONObject
 
 enum class AutonomousTaskStatus {
     PENDING, RUNNING, COMPLETED, FAILED, BLOCKED
@@ -21,6 +22,7 @@ enum class AutonomousTaskStatus {
 data class AutonomousTask(
     val id: String,
     val description: String,
+    val dependsOn: List<String> = emptyList(),
     var status: AutonomousTaskStatus = AutonomousTaskStatus.PENDING
 )
 
@@ -40,7 +42,6 @@ class AutonomousExecutionEngine(
     private val codeChangeApplier: CodeChangeApplier,
     private val aiFactory: AIFactory
 ) {
-
     private val _state = MutableStateFlow(AutonomousState.IDLE)
     val state: StateFlow<AutonomousState> = _state.asStateFlow()
 
@@ -61,7 +62,7 @@ class AutonomousExecutionEngine(
 
     private val _currentTaskIndex = MutableStateFlow(-1)
     val currentTaskIndex: StateFlow<Int> = _currentTaskIndex.asStateFlow()
-    
+
     private val maxConsecutiveFailures = 2
     private var runJob: Job? = null
 
@@ -69,157 +70,169 @@ class AutonomousExecutionEngine(
         if (_state.value != AutonomousState.IDLE && _state.value != AutonomousState.COMPLETED && _state.value != AutonomousState.STOPPED && _state.value != AutonomousState.FAILED && _state.value != AutonomousState.BLOCKED) {
             return@coroutineScope
         }
-        
+
         _iteration.value = 0
         _lastError.value = null
         _lastAction.value = "Starting autonomous run for goal"
         
         runJob = coroutineContext[Job]
-        
+
         try {
-            var consecutiveFailures = 0
             val aiProvider = aiFactory.getProvider(projectName, providerName)
-            
+
             _state.value = AutonomousState.PLANNING
             _lastAction.value = "Creating execution plan..."
-            
+
             val files = fileRepository.getFilesForProject(projectId).firstOrNull() ?: emptyList()
-            var projectContext = ProjectContext(projectName, files, null)
-            
+            val projectContext = ProjectContext(projectName, files, null)
+
             // Generate Plan
-            val planPrompt = "Goal: $goal\nCreate a structured implementation plan. Return a CodeChangeProposal where the 'summary' contains the plan, and 'changes' contains one FileChange representing the plan.xml or similar, or just return an empty 'changes' array."
-            val planProposal = try {
-                aiProvider.proposeCodeChanges(planPrompt, projectContext)
+            val planPrompt = """Goal: $goal
+Create a structured implementation plan. Return strict machine-readable JSON matching this exact schema:
+{
+  "goal": "original goal",
+  "tasks": [
+    {
+      "id": "task-1",
+      "description": "Create the required data model",
+      "dependsOn": []
+    }
+  ]
+}
+Return ONLY valid JSON. Do not include markdown blocks or other text.
+"""
+            val planJsonString = try {
+                aiProvider.generateResponse(planPrompt, emptyList(), projectContext)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                 _state.value = AutonomousState.FAILED
-                _lastError.value = "Failed to create plan: ${e.message}"
-                messageRepository.insert(MessageEntity(projectId = projectId, text = "Autonomous Run FAILED to plan: ${e.message}", isUser = false))
+                _state.value = AutonomousState.FAILED
+                _lastError.value = "Failed to fetch plan: ${e.message}"
+                messageRepository.insert(MessageEntity(projectId = projectId, text = "Autonomous Run FAILED to fetch plan: ${e.message}", isUser = false))
+                return@coroutineScope
+            }
+
+            val plan = try {
+                parseAndValidatePlan(planJsonString)
+            } catch (e: Exception) {
+                _state.value = AutonomousState.FAILED
+                _lastError.value = "Failed to parse plan: ${e.message}"
+                messageRepository.insert(MessageEntity(projectId = projectId, text = "Autonomous Run FAILED to parse plan: ${e.message}\n\nResponse was:\n$planJsonString", isUser = false))
                 return@coroutineScope
             }
             
-            // For now, create a single task if we can't parse a complex JSON plan from the provider yet
-            val initialPlan = AutonomousPlan(
-                goal = goal,
-                tasks = listOf(
-                    AutonomousTask(id = "task-1", description = "Execute implementation for: $goal")
-                )
-            )
-            
-            _currentPlan.value = initialPlan
-            _currentTaskIndex.value = 0
-            
-            var loopCount = 0
-            var currentContextRequest = "Task: ${initialPlan.tasks[0].description}\nThis is an autonomous loop. Analyze the current context and propose the next batch of changes for this specific task. If the task is fully complete, return an empty 'changes' array."
+            _currentPlan.value = plan
+            messageRepository.insert(MessageEntity(projectId = projectId, text = "Autonomous Plan Created: ${plan.tasks.size} tasks.", isUser = false))
 
-            while (isActive && loopCount < _maxIterations.value && _currentTaskIndex.value < initialPlan.tasks.size) {
+            var loopCount = 0
+            
+            while (isActive && loopCount < _maxIterations.value) {
+                val currentPlanVal = _currentPlan.value ?: break
+                
+                val nextTask = getNextReadyTask(currentPlanVal)
+                if (nextTask == null) {
+                    if (currentPlanVal.tasks.all { it.status == AutonomousTaskStatus.COMPLETED }) {
+                        _state.value = AutonomousState.COMPLETED
+                        _lastAction.value = "All tasks completed successfully."
+                        messageRepository.insert(MessageEntity(projectId = projectId, text = "Autonomous Run Completed Successfully.", isUser = false))
+                        return@coroutineScope
+                    } else if (currentPlanVal.tasks.any { it.status == AutonomousTaskStatus.BLOCKED || it.status == AutonomousTaskStatus.FAILED }) {
+                        _state.value = AutonomousState.BLOCKED
+                        _lastAction.value = "Execution blocked due to failed tasks."
+                        messageRepository.insert(MessageEntity(projectId = projectId, text = "Autonomous Run BLOCKED. Some tasks failed or are unreachable.", isUser = false))
+                        return@coroutineScope
+                    } else {
+                        // This shouldn't happen unless there's a bug or cycle, but handle it
+                        _state.value = AutonomousState.BLOCKED
+                        _lastAction.value = "Execution blocked. No ready tasks found."
+                        messageRepository.insert(MessageEntity(projectId = projectId, text = "Autonomous Run BLOCKED. Dependency deadlock.", isUser = false))
+                        return@coroutineScope
+                    }
+                }
+                
+                val taskIndex = currentPlanVal.tasks.indexOf(nextTask)
+                _currentTaskIndex.value = taskIndex
+                
                 loopCount++
                 _iteration.value = loopCount
-                _state.value = AutonomousState.GENERATING
-                _lastAction.value = "Generating proposal for step $loopCount"
-
-                val currentFiles = fileRepository.getFilesForProject(projectId).firstOrNull() ?: emptyList()
-                val currentProjectContext = ProjectContext(projectName, currentFiles, null)
-
-                val proposal: CodeChangeProposal
-                try {
-                    proposal = aiProvider.proposeCodeChanges(currentContextRequest, currentProjectContext)
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    consecutiveFailures++
-                    _lastError.value = "Generation failed: ${e.message}"
-                    if (consecutiveFailures >= maxConsecutiveFailures) {
-                        _state.value = AutonomousState.BLOCKED
-                        _lastAction.value = "Blocked after $consecutiveFailures generation failures."
-                        messageRepository.insert(MessageEntity(projectId = projectId, text = "Autonomous Run BLOCKED: ${_lastError.value}", isUser = false))
-                        return@coroutineScope
-                    }
-                    continue
-                }
-
-                if (proposal.changes.isEmpty()) {
-                    val currentPlanVal = _currentPlan.value
-                    if (currentPlanVal != null) {
-                        val taskIdx = _currentTaskIndex.value
-                        if (taskIdx >= 0 && taskIdx < currentPlanVal.tasks.size) {
-                            currentPlanVal.tasks[taskIdx].status = AutonomousTaskStatus.COMPLETED
-                        }
-                        
-                        _currentTaskIndex.value = taskIdx + 1
-                        
-                        if (_currentTaskIndex.value >= currentPlanVal.tasks.size) {
-                            _state.value = AutonomousState.COMPLETED
-                            _lastAction.value = "All tasks completed successfully."
-                            messageRepository.insert(MessageEntity(projectId = projectId, text = "Autonomous Run Completed.\n\nSummary: ${proposal.summary}", isUser = false))
-                            return@coroutineScope
-                        } else {
-                            val nextTask = currentPlanVal.tasks[_currentTaskIndex.value]
-                            nextTask.status = AutonomousTaskStatus.RUNNING
-                            currentContextRequest = "Next Task: ${nextTask.description}\nAnalyze the current context and propose the next batch of changes for this task. If the task is fully complete, return an empty 'changes' array."
-                            continue
-                        }
-                    } else {
-                        _state.value = AutonomousState.COMPLETED
-                        _lastAction.value = "Task completed successfully."
-                        messageRepository.insert(MessageEntity(projectId = projectId, text = "Autonomous Run Completed.\n\nSummary: ${proposal.summary}", isUser = false))
-                        return@coroutineScope
-                    }
-                }
-
-                _state.value = AutonomousState.APPLYING
-                _lastAction.value = "Applying: ${proposal.summary}"
-
-                val result = codeChangeApplier.applyProposal(projectId, proposal)
                 
-                if (result is ApplyResult.Success) {
-                    _state.value = AutonomousState.VERIFYING
-                    _lastAction.value = "Verifying step $loopCount"
+                nextTask.status = AutonomousTaskStatus.RUNNING
+                
+                var consecutiveFailures = 0
+                var currentContextRequest = buildTaskPrompt(currentPlanVal, nextTask)
+                
+                while (isActive && consecutiveFailures < maxConsecutiveFailures) {
+                    _state.value = AutonomousState.GENERATING
+                    _lastAction.value = "Generating proposal for task: ${nextTask.id}"
                     
-                    val verifyResult = verifyChanges(projectId, proposal)
-                    if (verifyResult) {
-                        _state.value = AutonomousState.CONTINUING
-                        _lastAction.value = "Applied and verified step $loopCount"
-                        consecutiveFailures = 0
-                        
-                        messageRepository.insert(MessageEntity(
-                            projectId = projectId,
-                            text = "Autonomous Step $loopCount Applied:\n\nSummary: ${proposal.summary}",
-                            isUser = false
-                        ))
-                        
-                        currentContextRequest = "Previous step applied successfully: ${proposal.summary}. Continue with the next step for: $goal. If the task is fully complete, return an empty 'changes' array."
-                    } else {
-                        // Verification failed, rollback
-                        codeChangeApplier.rollback(projectId, result.createdFileIds, result.snapshot)
+                    val currentFiles = fileRepository.getFilesForProject(projectId).firstOrNull() ?: emptyList()
+                    val currentProjectContext = ProjectContext(projectName, currentFiles, null)
+                    
+                    val proposal = try {
+                        aiProvider.proposeCodeChanges(currentContextRequest, currentProjectContext)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
                         consecutiveFailures++
-                        _lastError.value = "Verification failed for step $loopCount, rolled back."
-                        if (consecutiveFailures >= maxConsecutiveFailures) {
-                            _state.value = AutonomousState.BLOCKED
-                            _lastAction.value = "Blocked after $consecutiveFailures failures."
-                            messageRepository.insert(MessageEntity(projectId = projectId, text = "Autonomous Run BLOCKED: Verification failed.", isUser = false))
-                            return@coroutineScope
-                        }
+                        _lastError.value = "Generation failed: ${e.message}"
+                        currentContextRequest = buildRetryPrompt(currentPlanVal, nextTask, "Generation failed: ${e.message}")
+                        continue
                     }
-                } else {
-                    val errorMsg = when(result) {
-                        is ApplyResult.ValidationError -> result.message
-                        is ApplyResult.Conflict -> "${result.message} at ${result.filePath}"
-                        is ApplyResult.ApplyError -> result.message
-                        is ApplyResult.RollbackError -> "Rollback error: ${result.rollbackError} (Original: ${result.originalError})"
-                        else -> "Unknown error"
-                    }
-                    consecutiveFailures++
-                    _lastError.value = "Failed to apply: $errorMsg"
                     
-                    if (consecutiveFailures >= maxConsecutiveFailures) {
-                        _state.value = AutonomousState.BLOCKED
-                        _lastAction.value = "Blocked after $consecutiveFailures apply failures."
-                        messageRepository.insert(MessageEntity(projectId = projectId, text = "Autonomous Run BLOCKED: Failed to apply step $loopCount: $errorMsg", isUser = false))
-                        return@coroutineScope
+                    if (proposal.changes.isEmpty()) {
+                        // Task requires no changes or AI thinks it's done
+                        nextTask.status = AutonomousTaskStatus.COMPLETED
+                        messageRepository.insert(MessageEntity(projectId = projectId, text = "Task ${nextTask.id} completed (No changes needed).", isUser = false))
+                        break // Break out of task retry loop, proceed to next task
                     }
-                    currentContextRequest = "Previous attempt failed to apply with error: $errorMsg. Please retry or adjust your approach."
+                    
+                    _state.value = AutonomousState.APPLYING
+                    _lastAction.value = "Applying task ${nextTask.id}: ${proposal.summary}"
+                    val result = codeChangeApplier.applyProposal(projectId, proposal)
+                    
+                    if (result is ApplyResult.Success) {
+                        _state.value = AutonomousState.VERIFYING
+                        _lastAction.value = "Verifying task ${nextTask.id}"
+                        
+                        val verifyResult = verifyChanges(projectId, proposal)
+                        if (verifyResult) {
+                            nextTask.status = AutonomousTaskStatus.COMPLETED
+                            _state.value = AutonomousState.CONTINUING
+                            _lastAction.value = "Applied and verified task ${nextTask.id}"
+                            
+                            messageRepository.insert(MessageEntity(
+                                projectId = projectId,
+                                text = "Task ${nextTask.id} Applied:\n\nSummary: ${proposal.summary}",
+                                isUser = false
+                            ))
+                            break // Break out of task retry loop, proceed to next task
+                        } else {
+                            // Verification failed, rollback
+                            codeChangeApplier.rollback(projectId, result.createdFileIds, result.snapshot)
+                            consecutiveFailures++
+                            _lastError.value = "Verification failed for task ${nextTask.id}, rolled back."
+                            currentContextRequest = buildRetryPrompt(currentPlanVal, nextTask, "Verification failed (e.g., changes were not saved correctly). Please revise.")
+                        }
+                    } else {
+                        val errorMsg = when(result) {
+                            is ApplyResult.ValidationError -> result.message
+                            is ApplyResult.Conflict -> "${result.message} at ${result.filePath}"
+                            is ApplyResult.ApplyError -> result.message
+                            is ApplyResult.RollbackError -> "Rollback error: ${result.rollbackError} (Original: ${result.originalError})"
+                            else -> "Unknown error"
+                        }
+                        consecutiveFailures++
+                        _lastError.value = "Failed to apply task ${nextTask.id}: $errorMsg"
+                        currentContextRequest = buildRetryPrompt(currentPlanVal, nextTask, "Failed to apply with error: $errorMsg. Please retry or adjust your approach.")
+                    }
+                }
+                
+                if (consecutiveFailures >= maxConsecutiveFailures) {
+                    nextTask.status = AutonomousTaskStatus.BLOCKED
+                    _state.value = AutonomousState.BLOCKED
+                    _lastAction.value = "Task ${nextTask.id} blocked after $consecutiveFailures failures."
+                    messageRepository.insert(MessageEntity(projectId = projectId, text = "Task ${nextTask.id} BLOCKED: Exceeded retry limit.", isUser = false))
+                    return@coroutineScope
                 }
             }
             
@@ -240,7 +253,7 @@ class AutonomousExecutionEngine(
             messageRepository.insert(MessageEntity(projectId = projectId, text = "Autonomous Run FAILED: ${e.message}", isUser = false))
         }
     }
-    
+
     fun stop() {
         if (_state.value != AutonomousState.IDLE && _state.value != AutonomousState.STOPPED && _state.value != AutonomousState.COMPLETED && _state.value != AutonomousState.BLOCKED && _state.value != AutonomousState.FAILED) {
             _state.value = AutonomousState.STOPPED
@@ -248,11 +261,11 @@ class AutonomousExecutionEngine(
             runJob?.cancel()
         }
     }
-    
+
     fun setMaxIterations(max: Int) {
         _maxIterations.value = max
     }
-    
+
     private suspend fun verifyChanges(projectId: String, proposal: CodeChangeProposal): Boolean {
         val files = fileRepository.getFilesForProject(projectId).firstOrNull() ?: emptyList()
         val filePaths = files.map { it.path }
@@ -276,5 +289,106 @@ class AutonomousExecutionEngine(
             }
         }
         return true
+    }
+    
+    private fun buildTaskPrompt(plan: AutonomousPlan, task: AutonomousTask): String {
+        val completed = plan.tasks.filter { it.status == AutonomousTaskStatus.COMPLETED }
+        val completedStr = if (completed.isEmpty()) "None" else completed.joinToString("\n") { "- ${it.id}: ${it.description}" }
+        
+        return """
+Goal: ${plan.goal}
+
+Completed Tasks:
+$completedStr
+
+Current Task to Implement:
+- ID: ${task.id}
+- Description: ${task.description}
+
+Please analyze the current project context and propose the code changes required to implement this specific task.
+If the task requires no code changes (e.g. it was already implemented), return an empty 'changes' array.
+"""
+    }
+    
+    private fun buildRetryPrompt(plan: AutonomousPlan, task: AutonomousTask, error: String): String {
+        return """
+${buildTaskPrompt(plan, task)}
+
+PREVIOUS ATTEMPT FAILED:
+$error
+
+Please analyze the failure reason and adjust your approach.
+"""
+    }
+    
+    fun parseAndValidatePlan(jsonString: String): AutonomousPlan {
+        val cleanStr = jsonString.replace(Regex("```json\\s*"), "").replace(Regex("```\\s*"), "").trim()
+        val json = JSONObject(cleanStr)
+        val goal = json.getString("goal")
+        val tasksArray = json.getJSONArray("tasks")
+        
+        val tasks = mutableListOf<AutonomousTask>()
+        for (i in 0 until tasksArray.length()) {
+            val tObj = tasksArray.getJSONObject(i)
+            val id = tObj.getString("id")
+            val desc = tObj.getString("description")
+            val dependsOn = mutableListOf<String>()
+            if (tObj.has("dependsOn")) {
+                val depArray = tObj.getJSONArray("dependsOn")
+                for (j in 0 until depArray.length()) {
+                    dependsOn.add(depArray.getString(j))
+                }
+            }
+            tasks.add(AutonomousTask(id, desc, dependsOn))
+        }
+        
+        if (tasks.isEmpty()) throw Exception("Plan tasks cannot be empty")
+        if (tasks.size > 20) throw Exception("Too many tasks (max 20)")
+        
+        val taskIds = tasks.map { it.id }.toSet()
+        if (taskIds.size != tasks.size) throw Exception("Duplicate task IDs found")
+        
+        for (t in tasks) {
+            if (t.id.isBlank()) throw Exception("Task ID cannot be blank")
+            if (t.description.isBlank()) throw Exception("Task description cannot be blank")
+            for (dep in t.dependsOn) {
+                if (!taskIds.contains(dep)) throw Exception("Task ${t.id} depends on unknown task $dep")
+            }
+        }
+        
+        if (hasCycle(tasks)) throw Exception("Dependency cycle detected in plan")
+        
+        return AutonomousPlan(goal, tasks)
+    }
+    
+    private fun hasCycle(tasks: List<AutonomousTask>): Boolean {
+        val visited = mutableSetOf<String>()
+        val recursionStack = mutableSetOf<String>()
+        val taskMap = tasks.associateBy { it.id }
+
+        fun dfs(taskId: String): Boolean {
+            if (recursionStack.contains(taskId)) return true
+            if (visited.contains(taskId)) return false
+            visited.add(taskId)
+            recursionStack.add(taskId)
+            val task = taskMap[taskId] ?: return false
+            for (dep in task.dependsOn) {
+                if (dfs(dep)) return true
+            }
+            recursionStack.remove(taskId)
+            return false
+        }
+
+        for (task in tasks) {
+            if (dfs(task.id)) return true
+        }
+        return false
+    }
+    
+    private fun getNextReadyTask(plan: AutonomousPlan): AutonomousTask? {
+        val completedIds = plan.tasks.filter { it.status == AutonomousTaskStatus.COMPLETED }.map { it.id }.toSet()
+        return plan.tasks.find { t ->
+            t.status == AutonomousTaskStatus.PENDING && t.dependsOn.all { completedIds.contains(it) }
+        }
     }
 }
