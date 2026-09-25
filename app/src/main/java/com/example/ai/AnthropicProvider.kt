@@ -76,6 +76,10 @@ class AnthropicProvider(
                 } else {
                     "Error: Unexpected Anthropic API response (${e.code()})."
                 }
+            } catch (e: java.net.UnknownHostException) {
+                "Error: No internet connection or DNS lookup failed for Anthropic."
+            } catch (e: java.net.SocketTimeoutException) {
+                "Error: Request to Anthropic timed out."
             } catch (e: Exception) {
                 "Error: Network exception or unknown error occurred: ${e.message}"
             }
@@ -228,6 +232,10 @@ class AnthropicProvider(
                     else -> "Unexpected API response from Anthropic (${e.code()})."
                 }
                 throw IllegalStateException(errorMsg, e)
+            } catch (e: java.net.UnknownHostException) {
+                throw IllegalStateException("Network Error: No internet connection or DNS lookup failed for Anthropic.", e)
+            } catch (e: java.net.SocketTimeoutException) {
+                throw IllegalStateException("Network Timeout: Request to Anthropic timed out.", e)
             } catch (e: Exception) {
                 throw IllegalStateException("Failed to generate code proposal: ${e.message}", e)
             }

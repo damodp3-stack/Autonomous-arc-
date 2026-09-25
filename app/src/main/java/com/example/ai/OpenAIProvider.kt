@@ -74,6 +74,10 @@ class OpenAIProvider(
                 } else {
                     "Error: Unexpected OpenAI API response (${e.code()})."
                 }
+            } catch (e: java.net.UnknownHostException) {
+                "Error: No internet connection or DNS lookup failed for OpenAI."
+            } catch (e: java.net.SocketTimeoutException) {
+                "Error: Request to OpenAI timed out."
             } catch (e: Exception) {
                 "Error: Network exception or unknown error occurred: ${e.message}"
             }
@@ -222,6 +226,10 @@ class OpenAIProvider(
                     else -> "Unexpected API response from OpenAI (${e.code()})."
                 }
                 throw IllegalStateException(errorMsg, e)
+            } catch (e: java.net.UnknownHostException) {
+                throw IllegalStateException("Network Error: No internet connection or DNS lookup failed for OpenAI.", e)
+            } catch (e: java.net.SocketTimeoutException) {
+                throw IllegalStateException("Network Timeout: Request to OpenAI timed out.", e)
             } catch (e: Exception) {
                 throw IllegalStateException("Failed to generate code proposal: ${e.message}", e)
             }

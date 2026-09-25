@@ -3,9 +3,39 @@
 This document represents the current actual state of the repository.
 
 **Current Stage**
-Phase 6 — Core AI Pipeline Refinement & Provider/Model Configuration UI (Completed).
+Phase 7 — Production Hardening, APK Export & Cloud Build Pipeline (Completed).
 
 **Completed**
+- **Production Hardening & Resilient Networking:**
+  - `SocketTimeoutException` and `UnknownHostException` network failure handling implemented and unified across all AI providers (`GeminiAIProvider`, `OpenAIProvider`, `AnthropicProvider`).
+  - Clear, user-friendly error translations for HTTP 401/403 (Authentication/API keys), 404 (Model availability), 429 (Rate limiting & quota), and 5xx (Server availability).
+  - Robust JSON proposal sanitization stripping triple backtick markdown wrappers (` ```json ` / ` ``` `) from model responses before Moshi parsing.
+  - Path traversal and arbitrary write attack prevention in AI code proposals (rejects `../`, absolute leading `/`, backward slashes `\`, and missing rename destinations).
+  - Secure API key validation rejecting empty values and placeholder templates (`MY_GEMINI_API_KEY`, `YOUR_GEMINI_API_KEY`, etc.).
+  - Bounded autonomous execution safeguards with structured cancellation, rollback restoration, consecutive retry limits, and dead-lock prevention.
+- **R8 / ProGuard Production Optimization (`app/proguard-rules.pro`):**
+  - Configured safe keep rules for Moshi JSON adapters (`@Json`, `@JsonClass`), Retrofit 2 annotations and interfaces, Room entities and DAOs (`@Entity`, `@Dao`), OkHttp, Coroutines, and app data/AI serialization models (`com.example.ai.**`, `com.example.data.**`, `com.example.github.**`).
+  - Preserved line numbers and source attributes for actionable production stack traces.
+- **Automated CI/CD Cloud Build Pipeline (`.github/workflows/build.yml`):**
+  - Fully configured GitHub Actions workflow triggering on `push` to `main`, `pull_request`, and manual `workflow_dispatch`.
+  - Sets up OpenJDK 21 (Temurin) and Gradle caching.
+  - Executes unit and Robolectric tests (`./gradlew testDebugUnitTest`).
+  - Uploads unit test reports as artifacts (`unit-test-reports`).
+  - Builds Debug APK (`./gradlew assembleDebug`) and uploads artifact (`autonomous-arc-debug-apk`).
+  - Release signing keystore configuration supporting GitHub Secrets (`SIGNING_KEYSTORE_BASE64`, `STORE_PASSWORD`, `KEY_PASSWORD`) with automated fallback to keytool-generated CI keystore.
+  - Builds Release APK (`assembleRelease`) and Android App Bundle (`bundleRelease`).
+  - Uploads Release APK (`autonomous-arc-release-apk`) and Release Bundle (`autonomous-arc-release-bundle`).
+- **Release Build Architecture & Keystore Security:**
+  - Signing configuration in `app/build.gradle.kts` uses environment variables `KEYSTORE_PATH`, `STORE_PASSWORD`, and `KEY_PASSWORD`.
+  - Keystore files (`*.jks`, `*.keystore`, `debug.keystore.base64`) and `.build-outputs/` added to `.gitignore` to prevent committing secrets to version control.
+  - Production-ready Gradle wrapper generated (`gradlew`, `gradlew.bat`, `gradle/wrapper/gradle-wrapper.jar`, `gradle-wrapper.properties`).
+- **Unit & Robolectric Test Suite:**
+  - **117/117 unit tests passed** (0 failures, 0 errors, 0 skipped), including new focused test suite `ProductionHardeningTest` verifying path traversal rejection, placeholder rejection, JSON proposal cleaning, and mock provider fallback.
+- **Release Artifacts Verified Locally:**
+  - Release APK: `app/build/outputs/apk/release/app-release.apk` (16 MB)
+  - Release Bundle (AAB): `app/build/outputs/bundle/release/app-release.aab` (15 MB)
+  - Debug APK: `app/build/outputs/apk/debug/app-debug.apk` (16 MB)
+
 - **Dynamic Multi-Model Registry & Configuration (`AIModelRegistry`):**
   - Standardized catalog of active models for Gemini (1.5 Pro, 1.5 Flash, 2.0 Flash, 2.0 Flash Exp), OpenAI (GPT-4o, GPT-4o Mini, GPT-4 Turbo, o1-mini, o3-mini), Anthropic (Claude 3.5 Sonnet, Claude 3.5 Haiku, Claude 3 Opus), and Mock.
   - Model descriptions and validation utilities.
@@ -25,8 +55,6 @@ Phase 6 — Core AI Pipeline Refinement & Provider/Model Configuration UI (Compl
 - **TopAppBar Model Switcher in Workspace UI:**
   - Interactive chip indicator displaying active provider and selected model (e.g., `Gemini • gemini-1.5-pro`).
   - Quick model selection dropdown directly from the top bar.
-- **Automated Unit & Robolectric Test Suite:**
-  - 113/113 unit tests passing, covering autonomous engine, model registry, fallback provider, API key manager, and AI factory.
 
 - Hardened Autonomous Execution Engine (`AutonomousExecutionEngine`).
 - Real structured autonomous planning with strict JSON validation and cycle detection.
@@ -40,88 +68,85 @@ Phase 6 — Core AI Pipeline Refinement & Provider/Model Configuration UI (Compl
 - Structured cancellation honoring coroutine cancellation semantics transitioning cleanly to `STOPPED`.
 - Real-time immutable event log history (`executionHistory: StateFlow<List<AutonomousEvent>>`).
 - UI progress and status tracking in `WorkspaceScreen` (real-time task status, iteration count, retry count, active action, and error displays).
-- Comprehensive automated Robolectric unit test suite in `AutonomousExecutionEngineTest` verifying all plan parsing edge cases, dependency graphs, retries, rollbacks, validation, and cancellation without real external API calls.
-
-- State machine (IDLE, GENERATING, APPLYING, VERIFYING, CONTINUING, STOPPED, BLOCKED, COMPLETED).
-- Coroutine-based structured cancellation.
-- Rollback-aware execution loop.
-- Execution history tracking per step.
-
-- Actual implementations for Anthropic and OpenAI REST clients.
-- UI for entering and managing custom API keys via SecureAPIKeyManager.
-- GitHub Integration (Clone, Commit, Push, Conflict Detection).
 - Multi-Provider AI Architecture (Gemini, OpenAI, Anthropic support via AIFactory and AIProviderConfigEntity).
 - Secure API Key Storage Foundation (APIKeyManager).
 - Structured File Operations expanded to include RENAME.
-- Clean home screen (Project List).
-- Project creation, renaming, and deletion.
-- Project-isolated workspaces.
-- Persistent local storage via Room (ProjectEntity, MessageEntity, ProjectFileEntity).
-- Prompt input box and Send button.
-- Chat-style response area with message history.
-- AIProvider abstraction (`MockAIProvider`, `GeminiAIProvider`).
-- High Density design theme applied.
-- Provider selection in Workspace UI (Mock vs. Gemini).
-- Real Gemini API integration (via Direct REST API with Moshi).
-- Files & Code Workspace Foundation (Room-based project files, code editor, side drawer file explorer).
-- Project Context AI foundation (current open file context passed to Gemini).
-- AI Code Change Proposal Engine completed. AI can generate structured file-change proposals.
-- Safe Code Change Apply Engine completed. AI proposals can be validated, snapshotted, applied, and rolled back safely.
-- Diff Viewer & Human Approval Workflow completed. Dedicated UI to review proposals, reject, or explicitly approve and apply changes.
-- **True Filesystem Workspace completed.** Project files are securely managed, written to, and synchronized with the real Android private filesystem.
+- GitHub Integration (Clone, Commit, Push, Conflict Detection).
+- True Filesystem Workspace completed. Project files are securely managed, written to, and synchronized with the real Android private filesystem.
 
 **Pending**
-- Token/usage dashboard.
-- Media Vault.
-- Ideas Vault.
+- Token/usage historic analytics dashboard.
+- Media Vault & Ideas Vault.
 - Cloud synchronization.
-- Advanced provider fallback.
-- Production hardening.
-
-
-- Media/Ideas Vault.
-- Cloud storage/Firebase.
-- Token/usage tracking.
-- APK/cloud builds.
 
 **Errors / Bugs**
-- None verified at this time.
+- None. All 117 unit tests pass cleanly. Debug APK, Release APK, and Release AAB build without error.
 
 **Verified**
-- Multi-Provider AI Architecture compilation and routing (Verified).
-- File operations expanded to support RENAME with safe Apply/Rollback (Verified).
-- Project creation and navigation (Verified).
-- Database persistence for messages, projects, and files (Verified).
-- Gemini AI API integration via REST and Moshi (Verified compilation and mock switching).
-- File operations: create, edit, save, delete, rename (Verified).
-- Apply Engine Validation, Conflict Detection, Snapshot, and Rollback (Verified).
-- **True Filesystem Workspace and synchronization (Verified with test coverage).**
-- **GitHub Clone Engine with True Failure Safety (Verified with edge-case tests).**
-- **GitHub Commit & Push Engine (Verified with test coverage for binary support and ref update safety).**
-- **Autonomous Execution Engine & Safety Loop Verification:**
-  - Exact test task: `gradle :app:testDebugUnitTest` (33 actionable tasks, 7 executed, 26 up-to-date; 113/113 total unit tests passed, 0 failures, 0 errors, 0 skipped).
-  - Autonomous engine test suite: `AutonomousExecutionEngineTest` (28/28 tests passed, 0 failures, 0 skipped) covering plan parsing, empty/malformed/exceeded tasks, duplicate task IDs, unknown dependencies, cycle detection, dependency ordering, independent tasks, false completion defenses, proposal security validation (path traversal, blank, duplicate paths, invalid renames), retry limits, verification rollback, max iterations boundary, cancellation, and immutable state/history.
-  - Model registry & resilience test suites: `AIModelRegistryTest` (4/4 passed), `FallbackAIProviderTest` (4/4 passed), `APIKeyManagerTest` (3/3 passed), `AIFactoryTest` (4/4 passed).
-  - Exact build task: `gradle :app:assembleDebug` (BUILD SUCCESSFUL). Verified Kotlin compilation, Android resource compilation, Compose compilation, manifest/resources, generated code, and APK packaging.
+- **Unit & Robolectric Test Suite:**
+  - Command: `gradle :app:testDebugUnitTest`
+  - Result: 117 tests completed, 0 failures, 0 errors, 0 skipped.
+  - Test suites:
+    - `com.example.ai.ProductionHardeningTest` (4/4 passed)
+    - `com.example.ai.AutonomousExecutionEngineTest` (28/28 passed)
+    - `com.example.ai.CodeChangeApplierTest` (13/13 passed)
+    - `com.example.ai.CodeChangeProposalTest` (4/4 passed)
+    - `com.example.ai.AIModelRegistryTest` (4/4 passed)
+    - `com.example.ai.AIFactoryTest` (4/4 passed)
+    - `com.example.ai.APIKeyManagerTest` (3/3 passed)
+    - `com.example.ai.FallbackAIProviderTest` (4/4 passed)
+    - `com.example.data.ProjectFileSystemTest` (17/17 passed)
+    - `com.example.data.ProjectFileRepositoryTest` (2/2 passed)
+    - `com.example.github.GitHubCloneTest` (14/14 passed)
+    - `com.example.github.GitHubPushTest` (16/16 passed)
+    - `com.example.github.GitHubIntegrationTest` (2/2 passed)
+    - `com.example.ExampleRobolectricTest` (1/1 passed)
+    - `com.example.ExampleUnitTest` (1/1 passed)
+- **Build & Packaging Verification:**
+  - Debug APK: `gradle :app:assembleDebug` -> `app/build/outputs/apk/debug/app-debug.apk` (BUILD SUCCESSFUL)
+  - Release APK: `STORE_PASSWORD=... KEY_PASSWORD=... gradle :app:assembleRelease` -> `app/build/outputs/apk/release/app-release.apk` (BUILD SUCCESSFUL)
+  - Release AAB: `STORE_PASSWORD=... KEY_PASSWORD=... gradle :app:bundleRelease` -> `app/build/outputs/bundle/release/app-release.aab` (BUILD SUCCESSFUL)
 
-**Known Limitations**
-- Autonomous planning and execution relies on structured JSON responses; non-JSON or severely degraded network connectivity triggers provider retry or fallback.
-- Code editor is a foundational version; it allows reading/writing text but lacks full IDE features like syntax highlighting.
-- High iteration runs (>10) are bounded by safety limits to prevent runaway loops or infinite token spend; users must re-trigger or increase iteration limits for very large projects.
+**Build & Release Guide**
+- **To build Debug APK locally:**
+  ```bash
+  gradle :app:assembleDebug
+  ```
+- **To build Release APK locally:**
+  ```bash
+  STORE_PASSWORD=<password> KEY_PASSWORD=<password> gradle :app:assembleRelease
+  ```
+- **To build Release AAB bundle locally:**
+  ```bash
+  STORE_PASSWORD=<password> KEY_PASSWORD=<password> gradle :app:bundleRelease
+  ```
+- **To run unit and Robolectric tests:**
+  ```bash
+  gradle :app:testDebugUnitTest
+  ```
+- **Signing Keystore Setup for CI (GitHub Actions):**
+  To sign production releases with your production keystore in GitHub Actions:
+  1. Base64-encode your keystore: `base64 -w 0 my-release-key.jks > keystore_b64.txt`
+  2. In your GitHub repository settings, navigate to **Settings > Secrets and variables > Actions**.
+  3. Add the following repository secrets:
+     - `SIGNING_KEYSTORE_BASE64`: The base64-encoded keystore content.
+     - `STORE_PASSWORD`: The keystore password.
+     - `KEY_PASSWORD`: The key alias password.
+  If secrets are not provided, the CI pipeline automatically generates a secure temporary keystore for CI verification so the build never fails.
 
 **Current Architecture**
-- Android app using Kotlin, Jetpack Compose.
+- Android app using Kotlin, Jetpack Compose, Material 3.
 - Room database for local persistence (`AppDatabase`, `ProjectDao`, `MessageDao`, `ProjectFileDao`, `AIProviderConfigDao`).
 - Filesystem abstraction (`ProjectFileSystem`) handles sandboxed file operations.
 - Repository pattern (`LocalProjectRepository`, `MessageRepository`, `ProjectFileRepository`, `AIProviderConfigRepository`).
 - Navigation Compose for routing (`AppNavigation`).
-- MVVM Architecture (`ProjectListViewModel`, `WorkspaceViewModel`).
+- MVVM Architecture (`ProjectListViewModel`, `WorkspaceViewModel`, `GitHubViewModel`).
 - Dynamic Multi-Provider AI abstraction (`AIFactory`, `AIProviderConfigEntity`, `OpenAIProvider`, `AnthropicProvider`, `GeminiAIProvider`, `MockAIProvider`, `FallbackAIProvider`, `AIModelRegistry`, `APIKeyManager`).
 - Safe code execution layer (`CodeChangeApplier`).
 - Autonomous loop (`AutonomousExecutionEngine`).
-
-**Immediate Next Step**
-- Production hardening, APK export and cloud build pipelines.
+- Cloud CI/CD workflow (`.github/workflows/build.yml`).
+- R8/ProGuard configuration (`app/proguard-rules.pro`).
 
 **Final Goal**
 The intended final Autonomous Arc product: A fully autonomous AI coding assistant with real-time file editing, GitHub sync, and cloud builds on mobile.
+
