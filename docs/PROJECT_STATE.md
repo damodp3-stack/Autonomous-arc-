@@ -3,90 +3,71 @@
 This document represents the current actual state of the repository.
 
 **Current Stage**
-Phase 7 — Production Hardening, APK Export & Cloud Build Pipeline (Completed).
+Phase 8 — Product-Level Vaults, Usage Analytics & Cloud-Sync Foundation (Completed).
 
 **Completed**
-- **Production Hardening & Resilient Networking:**
-  - `SocketTimeoutException` and `UnknownHostException` network failure handling implemented and unified across all AI providers (`GeminiAIProvider`, `OpenAIProvider`, `AnthropicProvider`).
-  - Clear, user-friendly error translations for HTTP 401/403 (Authentication/API keys), 404 (Model availability), 429 (Rate limiting & quota), and 5xx (Server availability).
-  - Robust JSON proposal sanitization stripping triple backtick markdown wrappers (` ```json ` / ` ``` `) from model responses before Moshi parsing.
-  - Path traversal and arbitrary write attack prevention in AI code proposals (rejects `../`, absolute leading `/`, backward slashes `\`, and missing rename destinations).
-  - Secure API key validation rejecting empty values and placeholder templates (`MY_GEMINI_API_KEY`, `YOUR_GEMINI_API_KEY`, etc.).
-  - Bounded autonomous execution safeguards with structured cancellation, rollback restoration, consecutive retry limits, and dead-lock prevention.
-- **R8 / ProGuard Production Optimization (`app/proguard-rules.pro`):**
-  - Configured safe keep rules for Moshi JSON adapters (`@Json`, `@JsonClass`), Retrofit 2 annotations and interfaces, Room entities and DAOs (`@Entity`, `@Dao`), OkHttp, Coroutines, and app data/AI serialization models (`com.example.ai.**`, `com.example.data.**`, `com.example.github.**`).
-  - Preserved line numbers and source attributes for actionable production stack traces.
-- **Automated CI/CD Cloud Build Pipeline (`.github/workflows/build.yml`):**
-  - Fully configured GitHub Actions workflow triggering on `push` to `main`, `pull_request`, and manual `workflow_dispatch`.
-  - Sets up OpenJDK 21 (Temurin) and Gradle caching.
-  - Executes unit and Robolectric tests (`./gradlew testDebugUnitTest`).
-  - Uploads unit test reports as artifacts (`unit-test-reports`).
-  - Builds Debug APK (`./gradlew assembleDebug`) and uploads artifact (`autonomous-arc-debug-apk`).
-  - Release signing keystore configuration supporting GitHub Secrets (`SIGNING_KEYSTORE_BASE64`, `STORE_PASSWORD`, `KEY_PASSWORD`) with automated fallback to keytool-generated CI keystore.
-  - Builds Release APK (`assembleRelease`) and Android App Bundle (`bundleRelease`).
-  - Uploads Release APK (`autonomous-arc-release-apk`) and Release Bundle (`autonomous-arc-release-bundle`).
-- **Release Build Architecture & Keystore Security:**
-  - Signing configuration in `app/build.gradle.kts` uses environment variables `KEYSTORE_PATH`, `STORE_PASSWORD`, and `KEY_PASSWORD`.
-  - Keystore files (`*.jks`, `*.keystore`, `debug.keystore.base64`) and `.build-outputs/` added to `.gitignore` to prevent committing secrets to version control.
-  - Production-ready Gradle wrapper generated (`gradlew`, `gradlew.bat`, `gradle/wrapper/gradle-wrapper.jar`, `gradle-wrapper.properties`).
+- **Token & Usage Analytics Dashboard (`UsageRecordEntity`, `UsageDao`, `LocalUsageRepository`, `UsageAnalyticsViewModel`, `UsageAnalyticsScreen`):**
+  - Persistent Room storage (`usage_records`) recording prompt tokens, completion tokens, total tokens, provider, model, timestamp, request status (`SUCCESS`, `ERROR`), and safe truncated error info without storing sensitive API keys or full prompt texts.
+  - High-performance aggregation logic generating `UsageSummary` with KPI metrics (total requests, token counts, success/failure counts, provider breakdown, model breakdown).
+  - Time range filtering (`ALL_TIME`, `TODAY`, `LAST_7_DAYS`, `LAST_30_DAYS`).
+  - M3 UI with KPI cards, provider and model breakdown lists, recent activity timeline with status chips and error alerts, and history clearing dialog.
+  - Auto-recording wired cleanly into `WorkspaceViewModel.sendMessage` and `WorkspaceViewModel.proposeChange`.
+
+- **Media Vault (`MediaEntity`, `MediaDao`, `LocalMediaRepository`, `MediaVaultViewModel`, `MediaVaultScreen`):**
+  - Room metadata persistence (`media_items`) tracking filename, media type (`IMAGE`, `VIDEO`), creation timestamp, app-private file path, size in bytes, and project/chat associations.
+  - Sandboxed app-private storage (`context.filesDir/media_vault`) with path traversal defense (`..` and slash sanitization, canonical path enforcement).
+  - High-fidelity UI: 2-column media grid with Coil `AsyncImage` previews, video thumbnail badges, missing/corrupt file indicators, file rename, deletion from disk and database, and full preview dialog.
+  - Media sample creation utility for rapid local testing and asset population.
+
+- **Ideas Vault (`IdeaEntity`, `IdeaDao`, `LocalIdeaRepository`, `IdeasVaultViewModel`, `IdeasVaultScreen`):**
+  - Room persistence (`ideas`) capturing title, description, timestamps, status (`DRAFT`, `IN_PROGRESS`, `COMPLETED`, `ARCHIVED`), tags, and project/chat associations.
+  - Fast search and status filtering (`All`, `Drafts`, `In Progress`, `Completed`, `Archived`).
+  - Direct "Convert to Project" action that instantiates a new project in `ProjectRepository` with the idea title and establishes bidirectional project linking.
+
+- **Cloud Synchronization Foundation (`com.example.sync.*`):**
+  - Offline-first architecture where the local Room database remains the authoritative single source of truth when offline.
+  - `CloudSyncProvider` interface supporting pluggable cloud backends without touching application domain logic.
+  - `LocalOnlySyncProvider` active by default for complete local privacy and offline resilience.
+  - `MockCloudSyncProvider` with in-memory remote storage for simulating sync pushes, pulls, and conflict states.
+  - `MediaObjectStorageProvider` with `LocalOnlyMediaStorageProvider` abstraction for future binary object uploads without premature vendor lock-in.
+  - `SyncMetadataEntity` table and `SyncMetadataDao` tracking sync statuses (`SYNCED`, `PENDING_UPLOAD`, `CONFLICT`, `LOCAL_ONLY`, `ERROR`), remote IDs, timestamps, and error messages.
+  - `RealSyncRepository` orchestrating push/pull cycles with configurable conflict resolution strategies (`SERVER_WINS`, `CLIENT_WINS`, `LAST_WRITE_WINS`, `MANUAL`).
+
+- **Unified Product Navigation & Settings (`AppNavigation.kt`, `SettingsScreen.kt`, `StandaloneAIProviderSettingsDialog.kt`, `GitHubSettingsDialog.kt`):**
+  - M3 `NavigationBar` across 5 primary product destinations: Projects, Ideas, Media, Analytics, Settings, with active indicator pills and system navigation bar insets.
+  - Full-screen Workspace sub-screen with pop-back navigation.
+  - Settings screen with standalone AI provider configuration dialog, GitHub account management dialog, cloud sync mode toggle, connection test, and "Sync Now" trigger.
+
+- **Production Hardening, Build Architecture & Keystore Security:**
+  - `SocketTimeoutException` and `UnknownHostException` network failure handling unified across AI providers (`GeminiAIProvider`, `OpenAIProvider`, `AnthropicProvider`).
+  - Safe keep rules in `app/proguard-rules.pro` for Moshi, Retrofit 2, Room entities, OkHttp, Coroutines, and app packages (`com.example.ai.**`, `com.example.data.**`, `com.example.github.**`, `com.example.sync.**`).
+  - Automated CI/CD Cloud Build Pipeline (`.github/workflows/build.yml`) for testing, debug APK, release APK, and release bundle packaging.
+  - Configurable `KEY_ALIAS` support in `app/build.gradle.kts` alongside `KEYSTORE_PATH`, `STORE_PASSWORD`, and `KEY_PASSWORD`.
+
 - **Unit & Robolectric Test Suite:**
-  - **117/117 unit tests passed** (0 failures, 0 errors, 0 skipped), including new focused test suite `ProductionHardeningTest` verifying path traversal rejection, placeholder rejection, JSON proposal cleaning, and mock provider fallback.
-- **Release Artifacts Verified Locally:**
+  - **136/136 unit and Robolectric tests passed** (0 failures, 0 errors, 0 skipped across 19 test suites).
+
+- **Build Artifacts Verified Locally:**
+  - Debug APK: `app/build/outputs/apk/debug/app-debug.apk` (27 MB)
   - Release APK: `app/build/outputs/apk/release/app-release.apk` (16 MB)
-  - Release Bundle (AAB): `app/build/outputs/bundle/release/app-release.aab` (15 MB)
-  - Debug APK: `app/build/outputs/apk/debug/app-debug.apk` (16 MB)
-
-- **Dynamic Multi-Model Registry & Configuration (`AIModelRegistry`):**
-  - Standardized catalog of active models for Gemini (1.5 Pro, 1.5 Flash, 2.0 Flash, 2.0 Flash Exp), OpenAI (GPT-4o, GPT-4o Mini, GPT-4 Turbo, o1-mini, o3-mini), Anthropic (Claude 3.5 Sonnet, Claude 3.5 Haiku, Claude 3 Opus), and Mock.
-  - Model descriptions and validation utilities.
-- **Provider & Model Configuration Modal (`AIProviderSettingsDialog`):**
-  - Dedicated Material 3 settings dialog for managing Gemini, OpenAI, Anthropic, and Mock providers.
-  - Model selection dropdowns with human-readable capabilities.
-  - Secure API key entry with show/hide toggle and key persistence via `APIKeyManager` / `SecureAPIKeyManager`.
-  - Real-time connection testing (`testConnection`) verifying keys and models against real endpoints with HTTP-status aware error messages.
-- **Token Usage Tracking (`TokenUsage`):**
-  - End-to-end token counting captured from OpenAI and Anthropic API responses (`prompt_tokens`, `completion_tokens`, `total_tokens`).
-  - Real-time token usage badge displayed above prompt input and in the Diff Viewer proposal review dialog.
-- **Resilient Fallback AI Provider (`FallbackAIProvider`):**
-  - Seamless automatic failover executing primary provider first and failing over to secondary backup provider if errors occur.
-  - Aggregated token usage across attempts.
-- **Autonomous Execution Engine Model Integration:**
-  - `AutonomousExecutionEngine.start` parameterized with `model: String?` allowing the autonomous loop to leverage user-selected models.
-- **TopAppBar Model Switcher in Workspace UI:**
-  - Interactive chip indicator displaying active provider and selected model (e.g., `Gemini • gemini-1.5-pro`).
-  - Quick model selection dropdown directly from the top bar.
-
-- Hardened Autonomous Execution Engine (`AutonomousExecutionEngine`).
-- Real structured autonomous planning with strict JSON validation and cycle detection.
-- Dependency-aware topological execution flow with dynamic unblocking of dependent tasks.
-- Immutable task and plan state models (`AutonomousPlan`, `AutonomousTask`).
-- Pre-application proposal security validation (path traversal detection, blank path rejection, duplicate path detection, rename target validation).
-- False completion defense mechanism (verifies whether empty proposals actually satisfy the task; triggers context-aware retries if not satisfied).
-- Rollback-aware execution with automated restoration on verification failure.
-- Bounded retry limits per task (max retries with failure context injection into AI prompts).
-- Bounded global execution iterations (`maxIterations` safeguard transitioning to `BLOCKED`).
-- Structured cancellation honoring coroutine cancellation semantics transitioning cleanly to `STOPPED`.
-- Real-time immutable event log history (`executionHistory: StateFlow<List<AutonomousEvent>>`).
-- UI progress and status tracking in `WorkspaceScreen` (real-time task status, iteration count, retry count, active action, and error displays).
-- Multi-Provider AI Architecture (Gemini, OpenAI, Anthropic support via AIFactory and AIProviderConfigEntity).
-- Secure API Key Storage Foundation (APIKeyManager).
-- Structured File Operations expanded to include RENAME.
-- GitHub Integration (Clone, Commit, Push, Conflict Detection).
-- True Filesystem Workspace completed. Project files are securely managed, written to, and synchronized with the real Android private filesystem.
+  - Release Bundle (AAB): `app/build/outputs/bundle/release/app-release.aab` (16 MB)
 
 **Pending**
-- Token/usage historic analytics dashboard.
-- Media Vault & Ideas Vault.
-- Cloud synchronization.
+- Remote cloud provider integration (e.g. Supabase, Firebase, or custom backend adapter) plugged into `CloudSyncProvider`.
+- Real media generation API integration plugged into `MediaRepository`.
 
 **Errors / Bugs**
-- None. All 117 unit tests pass cleanly. Debug APK, Release APK, and Release AAB build without error.
+- None. All 136 unit tests pass cleanly. Debug APK, Release APK, and Release AAB build without error.
 
 **Verified**
 - **Unit & Robolectric Test Suite:**
   - Command: `gradle :app:testDebugUnitTest`
-  - Result: 117 tests completed, 0 failures, 0 errors, 0 skipped.
+  - Result: 136 tests completed, 0 failures, 0 errors, 0 skipped.
   - Test suites:
+    - `com.example.data.UsageAnalyticsTest` (5/5 passed)
+    - `com.example.data.MediaVaultTest` (5/5 passed)
+    - `com.example.data.IdeasVaultTest` (5/5 passed)
+    - `com.example.sync.CloudSyncTest` (4/4 passed)
     - `com.example.ai.ProductionHardeningTest` (4/4 passed)
     - `com.example.ai.AutonomousExecutionEngineTest` (28/28 passed)
     - `com.example.ai.CodeChangeApplierTest` (13/13 passed)
@@ -104,8 +85,8 @@ Phase 7 — Production Hardening, APK Export & Cloud Build Pipeline (Completed).
     - `com.example.ExampleUnitTest` (1/1 passed)
 - **Build & Packaging Verification:**
   - Debug APK: `gradle :app:assembleDebug` -> `app/build/outputs/apk/debug/app-debug.apk` (BUILD SUCCESSFUL)
-  - Release APK: `STORE_PASSWORD=... KEY_PASSWORD=... gradle :app:assembleRelease` -> `app/build/outputs/apk/release/app-release.apk` (BUILD SUCCESSFUL)
-  - Release AAB: `STORE_PASSWORD=... KEY_PASSWORD=... gradle :app:bundleRelease` -> `app/build/outputs/bundle/release/app-release.aab` (BUILD SUCCESSFUL)
+  - Release APK: `KEYSTORE_PATH=... STORE_PASSWORD=... KEY_PASSWORD=... KEY_ALIAS=... gradle :app:assembleRelease` -> `app/build/outputs/apk/release/app-release.apk` (BUILD SUCCESSFUL)
+  - Release AAB: `KEYSTORE_PATH=... STORE_PASSWORD=... KEY_PASSWORD=... KEY_ALIAS=... gradle :app:bundleRelease` -> `app/build/outputs/bundle/release/app-release.aab` (BUILD SUCCESSFUL)
 
 **Build & Release Guide**
 - **To build Debug APK locally:**
@@ -124,29 +105,10 @@ Phase 7 — Production Hardening, APK Export & Cloud Build Pipeline (Completed).
   ```bash
   gradle :app:testDebugUnitTest
   ```
-- **Signing Keystore Setup for CI (GitHub Actions):**
-  To sign production releases with your production keystore in GitHub Actions:
-  1. Base64-encode your keystore: `base64 -w 0 my-release-key.jks > keystore_b64.txt`
-  2. In your GitHub repository settings, navigate to **Settings > Secrets and variables > Actions**.
-  3. Add the following repository secrets:
-     - `SIGNING_KEYSTORE_BASE64`: The base64-encoded keystore content.
-     - `STORE_PASSWORD`: The keystore password.
-     - `KEY_PASSWORD`: The key alias password.
-  If secrets are not provided, the CI pipeline automatically generates a secure temporary keystore for CI verification so the build never fails.
 
-**Current Architecture**
-- Android app using Kotlin, Jetpack Compose, Material 3.
-- Room database for local persistence (`AppDatabase`, `ProjectDao`, `MessageDao`, `ProjectFileDao`, `AIProviderConfigDao`).
-- Filesystem abstraction (`ProjectFileSystem`) handles sandboxed file operations.
-- Repository pattern (`LocalProjectRepository`, `MessageRepository`, `ProjectFileRepository`, `AIProviderConfigRepository`).
-- Navigation Compose for routing (`AppNavigation`).
-- MVVM Architecture (`ProjectListViewModel`, `WorkspaceViewModel`, `GitHubViewModel`).
-- Dynamic Multi-Provider AI abstraction (`AIFactory`, `AIProviderConfigEntity`, `OpenAIProvider`, `AnthropicProvider`, `GeminiAIProvider`, `MockAIProvider`, `FallbackAIProvider`, `AIModelRegistry`, `APIKeyManager`).
-- Safe code execution layer (`CodeChangeApplier`).
-- Autonomous loop (`AutonomousExecutionEngine`).
-- Cloud CI/CD workflow (`.github/workflows/build.yml`).
-- R8/ProGuard configuration (`app/proguard-rules.pro`).
-
-**Final Goal**
-The intended final Autonomous Arc product: A fully autonomous AI coding assistant with real-time file editing, GitHub sync, and cloud builds on mobile.
+**Git Status & Commit Information**
+- Current Commit Hash: `367496679369fe0200cbc83b32751dc1ed521a49`
+- Previous Commit Hash: `f92269fadf80777a985e4855c2b7e8924545ebcd`
+- Remote Push: Attempted `git push origin main` (requires interactive GitHub PAT credentials in this environment).
+- Next Recommended Milestone: Phase 9 — Production Cloud Sync Integration & Real Media Generation Provider Plugin.
 

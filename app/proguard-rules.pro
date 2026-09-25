@@ -26,10 +26,11 @@
 -keep @androidx.room.Entity class * { *; }
 -keep @androidx.room.Dao interface * { *; }
 
-# App Models (AI, GitHub, Data) to ensure serialization/deserialization integrity
+# App Models (AI, GitHub, Data, Sync) to ensure serialization/deserialization integrity
 -keep class com.example.ai.** { *; }
 -keep class com.example.github.** { *; }
 -keep class com.example.data.** { *; }
+-keep class com.example.sync.** { *; }
 
 # Kotlin Coroutines
 -dontwarn kotlinx.coroutines.**

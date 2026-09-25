@@ -36,6 +36,9 @@ interface ProjectDao {
     @Query("SELECT * FROM projects WHERE id = :projectId")
     fun getProject(projectId: String): Flow<ProjectEntity?>
 
+    @Query("SELECT * FROM projects WHERE id = :projectId")
+    suspend fun getProjectById(projectId: String): ProjectEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertProject(project: ProjectEntity)
 

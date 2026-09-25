@@ -66,7 +66,8 @@ class WorkspaceViewModel(
     val fileRepository: ProjectFileRepository,
     private val aiFactory: com.example.ai.AIFactory,
     val apiKeyManager: com.example.ai.APIKeyManager,
-    val configRepository: com.example.data.AIProviderConfigRepository? = null
+    val configRepository: com.example.data.AIProviderConfigRepository? = null,
+    val usageRepository: com.example.data.UsageRepository? = null
 ) : ViewModel() {
 
     private val codeChangeApplier = com.example.ai.CodeChangeApplier(fileRepository)
@@ -283,20 +284,45 @@ class WorkspaceViewModel(
         viewModelScope.launch {
             messageRepository.insert(MessageEntity(projectId = projectId, text = text, isUser = true))
             _isBuilding.value = true
-            val aiProvider = aiFactory.getProvider(_projectName.value, _selectedProvider.value, _selectedModel.value)
-            val projectContext = ProjectContext(
-                projectName = _projectName.value,
-                files = files.value,
-                currentOpenFile = _selectedFile.value
-            )
-            val aiResponse = aiProvider.generateResponse(text, messages.value, projectContext)
-            _latestUsage.value = aiProvider.getLatestUsage()
-            messageRepository.insert(MessageEntity(
-                projectId = projectId,
-                text = aiResponse,
-                isUser = false
-            ))
-            _isBuilding.value = false
+            try {
+                val aiProvider = aiFactory.getProvider(_projectName.value, _selectedProvider.value, _selectedModel.value)
+                val projectContext = ProjectContext(
+                    projectName = _projectName.value,
+                    files = files.value,
+                    currentOpenFile = _selectedFile.value
+                )
+                val aiResponse = aiProvider.generateResponse(text, messages.value, projectContext)
+                val usage = aiProvider.getLatestUsage()
+                _latestUsage.value = usage
+                usageRepository?.recordUsage(
+                    provider = _selectedProvider.value,
+                    model = _selectedModel.value,
+                    tokens = usage,
+                    status = "SUCCESS",
+                    projectId = projectId
+                )
+                messageRepository.insert(MessageEntity(
+                    projectId = projectId,
+                    text = aiResponse,
+                    isUser = false
+                ))
+            } catch (e: Exception) {
+                usageRepository?.recordUsage(
+                    provider = _selectedProvider.value,
+                    model = _selectedModel.value,
+                    tokens = null,
+                    status = "ERROR",
+                    error = e.message,
+                    projectId = projectId
+                )
+                messageRepository.insert(MessageEntity(
+                    projectId = projectId,
+                    text = "Error: ${e.message}",
+                    isUser = false
+                ))
+            } finally {
+                _isBuilding.value = false
+            }
         }
     }
 
@@ -316,7 +342,15 @@ class WorkspaceViewModel(
                 )
                 val proposal = aiProvider.proposeCodeChanges(request, projectContext)
                 _currentProposal.value = proposal
-                _latestUsage.value = proposal.tokenUsage ?: aiProvider.getLatestUsage()
+                val usage = proposal.tokenUsage ?: aiProvider.getLatestUsage()
+                _latestUsage.value = usage
+                usageRepository?.recordUsage(
+                    provider = _selectedProvider.value,
+                    model = _selectedModel.value,
+                    tokens = usage,
+                    status = "SUCCESS",
+                    projectId = projectId
+                )
                 
                 messageRepository.insert(MessageEntity(
                     projectId = projectId,
@@ -328,6 +362,14 @@ class WorkspaceViewModel(
             } catch (e: Exception) {
                 _proposalError.value = e.message ?: "An unknown error occurred"
                 _proposalState.value = ProposalState.FAILED
+                usageRepository?.recordUsage(
+                    provider = _selectedProvider.value,
+                    model = _selectedModel.value,
+                    tokens = null,
+                    status = "ERROR",
+                    error = e.message,
+                    projectId = projectId
+                )
             }
         }
     }
@@ -415,7 +457,8 @@ class WorkspaceViewModelFactory(
     val fileRepository: ProjectFileRepository,
     private val aiFactory: com.example.ai.AIFactory,
     private val apiKeyManager: com.example.ai.APIKeyManager,
-    private val configRepository: com.example.data.AIProviderConfigRepository? = null
+    private val configRepository: com.example.data.AIProviderConfigRepository? = null,
+    private val usageRepository: com.example.data.UsageRepository? = null
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(WorkspaceViewModel::class.java)) {
@@ -427,7 +470,8 @@ class WorkspaceViewModelFactory(
                 fileRepository,
                 aiFactory,
                 apiKeyManager,
-                configRepository
+                configRepository,
+                usageRepository
             ) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
