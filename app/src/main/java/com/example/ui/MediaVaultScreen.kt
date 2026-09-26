@@ -38,6 +38,9 @@ fun MediaVaultScreen(
     val filterType by viewModel.filterType.collectAsStateWithLifecycle()
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
 
+    val isGeneratingMedia by viewModel.isGeneratingMedia.collectAsStateWithLifecycle()
+    val generationStatus by viewModel.generationStatus.collectAsStateWithLifecycle()
+
     var showAddDialog by remember { mutableStateOf(false) }
     var selectedPreviewItem by remember { mutableStateOf<MediaEntity?>(null) }
     var itemToRename by remember { mutableStateOf<MediaEntity?>(null) }
@@ -82,6 +85,34 @@ fun MediaVaultScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
+            if (generationStatus != null) {
+                Surface(
+                    color = if (generationStatus!!.startsWith("Success")) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = generationStatus!!,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.weight(1f)
+                        )
+                        IconButton(
+                            onClick = { viewModel.clearGenerationStatus() },
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(Icons.Default.Close, contentDescription = "Dismiss", modifier = Modifier.size(16.dp))
+                        }
+                    }
+                }
+            }
+
             // Search field
             OutlinedTextField(
                 value = searchQuery,
@@ -237,53 +268,114 @@ fun MediaVaultScreen(
 
         // Add Media Dialog
         if (showAddDialog) {
+            var selectedMode by remember { mutableStateOf(0) }
+            var promptText by remember { mutableStateOf("") }
+            var selectedModel by remember { mutableStateOf("gemini-2.5-flash-image") }
             var mediaTitle by remember { mutableStateOf("Asset_${System.currentTimeMillis() % 1000}") }
             var isVideoSelected by remember { mutableStateOf(false) }
 
             AlertDialog(
-                onDismissRequest = { showAddDialog = false },
-                title = { Text("Add Media Asset") },
+                onDismissRequest = { if (!isGeneratingMedia) showAddDialog = false },
+                title = { Text(if (selectedMode == 0) "Generate AI Media" else "Create Local Asset") },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text("Create a new media file in the local media vault:")
-                        OutlinedTextField(
-                            value = mediaTitle,
-                            onValueChange = { mediaTitle = it },
-                            label = { Text("Media Name") },
-                            singleLine = true
-                        )
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             FilterChip(
-                                selected = !isVideoSelected,
-                                onClick = { isVideoSelected = false },
-                                label = { Text("Image (PNG)") },
-                                leadingIcon = { Icon(Icons.Default.Image, contentDescription = null) }
+                                selected = selectedMode == 0,
+                                onClick = { selectedMode = 0 },
+                                label = { Text("AI Generator") },
+                                leadingIcon = { Icon(Icons.Default.AutoAwesome, contentDescription = null) }
                             )
                             FilterChip(
-                                selected = isVideoSelected,
-                                onClick = { isVideoSelected = true },
-                                label = { Text("Video (MP4)") },
-                                leadingIcon = { Icon(Icons.Default.Videocam, contentDescription = null) }
+                                selected = selectedMode == 1,
+                                onClick = { selectedMode = 1 },
+                                label = { Text("Local Asset") },
+                                leadingIcon = { Icon(Icons.Default.AddPhotoAlternate, contentDescription = null) }
                             )
+                        }
+
+                        if (selectedMode == 0) {
+                            Text(
+                                "Generate a real image using the AI Media Provider (saved directly to Media Vault):",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            OutlinedTextField(
+                                value = promptText,
+                                onValueChange = { promptText = it },
+                                label = { Text("Image Prompt") },
+                                placeholder = { Text("A futuristic minimalist logo...") },
+                                modifier = Modifier.fillMaxWidth(),
+                                minLines = 2,
+                                maxLines = 4
+                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("Model: ", style = MaterialTheme.typography.labelSmall)
+                                AssistChip(
+                                    onClick = {},
+                                    label = { Text(selectedModel) }
+                                )
+                            }
+                        } else {
+                            Text("Create a new media file in the local media vault:")
+                            OutlinedTextField(
+                                value = mediaTitle,
+                                onValueChange = { mediaTitle = it },
+                                label = { Text("Media Name") },
+                                singleLine = true
+                            )
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                FilterChip(
+                                    selected = !isVideoSelected,
+                                    onClick = { isVideoSelected = false },
+                                    label = { Text("Image (PNG)") },
+                                    leadingIcon = { Icon(Icons.Default.Image, contentDescription = null) }
+                                )
+                                FilterChip(
+                                    selected = isVideoSelected,
+                                    onClick = { isVideoSelected = true },
+                                    label = { Text("Video (MP4)") },
+                                    leadingIcon = { Icon(Icons.Default.Videocam, contentDescription = null) }
+                                )
+                            }
                         }
                     }
                 },
                 confirmButton = {
-                    Button(
-                        onClick = {
-                            if (mediaTitle.isNotBlank()) {
-                                viewModel.createSampleMedia(mediaTitle, isVideo = isVideoSelected)
-                                showAddDialog = false
+                    if (selectedMode == 0) {
+                        Button(
+                            onClick = {
+                                if (promptText.isNotBlank()) {
+                                    viewModel.generateMediaAsset(promptText, selectedModel)
+                                    showAddDialog = false
+                                }
+                            },
+                            enabled = !isGeneratingMedia && promptText.isNotBlank()
+                        ) {
+                            if (isGeneratingMedia) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Generating...")
+                            } else {
+                                Text("Generate")
                             }
                         }
-                    ) {
-                        Text("Create Asset")
+                    } else {
+                        Button(
+                            onClick = {
+                                if (mediaTitle.isNotBlank()) {
+                                    viewModel.createSampleMedia(mediaTitle, isVideo = isVideoSelected)
+                                    showAddDialog = false
+                                }
+                            }
+                        ) {
+                            Text("Create Asset")
+                        }
                     }
                 },
                 dismissButton = {
-                    TextButton(onClick = { showAddDialog = false }) {
+                    TextButton(onClick = { showAddDialog = false }, enabled = !isGeneratingMedia) {
                         Text("Cancel")
                     }
                 }

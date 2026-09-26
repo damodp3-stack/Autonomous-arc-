@@ -26,9 +26,9 @@ import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 
 import retrofit2.http.Body
-
+import retrofit2.http.GET
 import retrofit2.http.POST
-
+import retrofit2.http.Path
 import retrofit2.http.Query
 
 
@@ -45,7 +45,14 @@ data class GenerateContentRequest(
 
 @JsonClass(generateAdapter = true)
 data class GenerationConfig(
-    val responseMimeType: String? = null
+    val responseMimeType: String? = null,
+    val responseModalities: List<String>? = null,
+    val imageConfig: GeminiImageConfig? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class GeminiImageConfig(
+    val aspectRatio: String? = null
 )
 
 @JsonClass(generateAdapter = true)
@@ -56,7 +63,14 @@ data class Content(
 
 @JsonClass(generateAdapter = true)
 data class Part(
-    val text: String? = null
+    val text: String? = null,
+    val inlineData: InlineDataDto? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class InlineDataDto(
+    val mimeType: String? = null,
+    val data: String? = null
 )
 
 @JsonClass(generateAdapter = true)
@@ -77,16 +91,38 @@ data class Candidate(
     val content: Content? = null
 )
 
+@JsonClass(generateAdapter = true)
+data class GeminiListModelsResponse(
+    val models: List<GeminiModelDto>? = null,
+    val nextPageToken: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class GeminiModelDto(
+    val name: String,
+    val displayName: String? = null,
+    val description: String? = null,
+    val supportedGenerationMethods: List<String>? = null,
+    val inputTokenLimit: Int? = null,
+    val outputTokenLimit: Int? = null
+)
+
 // --- Retrofit Setup ---
 
 interface GeminiApiService {
     @POST("v1beta/models/{model}:generateContent")
     suspend fun generateContent(
-        @retrofit2.http.Path("model") model: String,
-
+        @Path("model") model: String,
         @Query("key") apiKey: String,
         @Body request: GenerateContentRequest
     ): GenerateContentResponse
+
+    @GET("v1beta/models")
+    suspend fun listModels(
+        @Query("key") apiKey: String,
+        @Query("pageSize") pageSize: Int = 100,
+        @Query("pageToken") pageToken: String? = null
+    ): GeminiListModelsResponse
 }
 
 object GeminiRetrofitClient {
@@ -115,8 +151,10 @@ object GeminiRetrofitClient {
 class GeminiAIProvider(
     private val projectName: String,
     private val providedApiKey: String? = null,
-    private val model: String = "gemini-1.5-pro"
+    model: String = "gemini-3.1-flash-lite-preview",
+    private val apiService: GeminiApiService = GeminiRetrofitClient.service
 ) : AIProvider {
+    private val model: String = model.trim().removePrefix("models/").ifBlank { "gemini-3.1-flash-lite-preview" }
     private var latestUsage: TokenUsage? = null
 
     override fun getLatestUsage(): TokenUsage? = latestUsage
@@ -160,7 +198,7 @@ class GeminiAIProvider(
             )
 
             try {
-                val response = GeminiRetrofitClient.service.generateContent(model, apiKey, request)
+                val response = apiService.generateContent(model, apiKey, request)
                 latestUsage = response.usageMetadata?.let {
                     TokenUsage(
                         promptTokens = it.promptTokenCount,
@@ -179,9 +217,11 @@ class GeminiAIProvider(
                 if (e.code() == 401 || e.code() == 403) {
                     "Error: Gemini API authentication failed. Invalid or expired API key."
                 } else if (e.code() == 404) {
-                    "Error: Model '$model' was not found or is unsupported for your Gemini API tier."
+                    "Error: Model '$model' was not found or is unsupported. Please select a supported model (e.g. gemini-3.1-flash-lite-preview or gemini-flash-latest)."
                 } else if (e.code() == 429) {
-                    "Error: Gemini rate limit exceeded. Please wait a moment or switch models."
+                    "Error: Gemini rate limit or quota exceeded. Please wait a moment or switch to gemini-3.1-flash-lite-preview."
+                } else if (e.code() == 503) {
+                    "Error: Gemini is currently experiencing temporary high demand (HTTP 503). Please retry in a moment."
                 } else if (e.code() >= 500) {
                     "Error: Gemini server error (${e.code()})."
                 } else {
@@ -276,7 +316,7 @@ class GeminiAIProvider(
             )
 
             try {
-                val response = GeminiRetrofitClient.service.generateContent(model, apiKey, generateContentRequest)
+                val response = apiService.generateContent(model, apiKey, generateContentRequest)
                 latestUsage = response.usageMetadata?.let {
                     TokenUsage(
                         promptTokens = it.promptTokenCount,
@@ -315,8 +355,9 @@ class GeminiAIProvider(
             } catch (e: retrofit2.HttpException) {
                 val errorMsg = when (e.code()) {
                     401, 403 -> "Authentication failed. Invalid Gemini API key. Please check your key in Settings."
-                    404 -> "Model '$model' was not found or is unsupported for your Gemini API tier."
-                    429 -> "Rate limit exceeded for Gemini. Please wait a moment or switch models/providers."
+                    404 -> "Model '$model' was not found or is unsupported. Please select a supported model (e.g. gemini-3.1-flash-lite-preview or gemini-flash-latest)."
+                    429 -> "Rate limit or quota exceeded for Gemini. Please wait a moment or switch to gemini-3.1-flash-lite-preview."
+                    503 -> "Gemini is currently experiencing high demand (HTTP 503). Please retry in a moment."
                     in 500..599 -> "Gemini service temporarily unavailable (${e.code()})."
                     else -> "Unexpected API response from Gemini (${e.code()})."
                 }

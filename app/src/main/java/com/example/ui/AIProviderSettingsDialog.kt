@@ -48,7 +48,7 @@ fun AIProviderSettingsDialog(
     var geminiModel by remember {
         mutableStateOf(
             if (selectedProvider.equals("Gemini", ignoreCase = true)) {
-                viewModel.selectedModel.value
+                AIModelRegistry.resolveModel("Gemini", viewModel.selectedModel.value)
             } else {
                 AIModelRegistry.getDefaultModel("Gemini")
             }
@@ -59,7 +59,7 @@ fun AIProviderSettingsDialog(
     var openaiModel by remember {
         mutableStateOf(
             if (selectedProvider.equals("OpenAI", ignoreCase = true)) {
-                viewModel.selectedModel.value
+                AIModelRegistry.resolveModel("OpenAI", viewModel.selectedModel.value)
             } else {
                 AIModelRegistry.getDefaultModel("OpenAI")
             }
@@ -70,7 +70,7 @@ fun AIProviderSettingsDialog(
     var anthropicModel by remember {
         mutableStateOf(
             if (selectedProvider.equals("Anthropic", ignoreCase = true)) {
-                viewModel.selectedModel.value
+                AIModelRegistry.resolveModel("Anthropic", viewModel.selectedModel.value)
             } else {
                 AIModelRegistry.getDefaultModel("Anthropic")
             }
@@ -291,10 +291,79 @@ fun AIProviderSettingsDialog(
                     }
 
                     // Model Selection
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Model Selection", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                    val discoveryState by viewModel.aiFactory.modelSelectionRepository.getModelsState(selectedTab).collectAsStateWithLifecycle()
+                    val discoveredModels = discoveryState.models
+                    val availableModelIds = if (discoveredModels.isNotEmpty()) discoveredModels.map { it.id } else AIModelRegistry.getAvailableModels(selectedTab)
 
-                        val availableModels = AIModelRegistry.getAvailableModels(selectedTab)
+                    LaunchedEffect(selectedTab, currentKey) {
+                        if (currentKey.isNotBlank() && discoveryState.lastRefreshedTimestamp == null && !discoveryState.isLoading) {
+                            viewModel.refreshModelsForProvider(selectedTab, currentKey)
+                        }
+                    }
+
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("Model Selection", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                                if (discoveryState.isFromCache) {
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = MaterialTheme.colorScheme.surfaceVariant
+                                    ) {
+                                        Text(
+                                            "CACHED",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                        )
+                                    }
+                                }
+                            }
+                            IconButton(
+                                onClick = { viewModel.refreshModelsForProvider(selectedTab, currentKey) },
+                                enabled = !discoveryState.isLoading && currentKey.isNotBlank(),
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                if (discoveryState.isLoading) {
+                                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                } else {
+                                    Icon(Icons.Default.Refresh, contentDescription = "Refresh live models", modifier = Modifier.size(18.dp))
+                                }
+                            }
+                        }
+
+                        if (discoveryState.errorMessage != null) {
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = discoveryState.errorMessage!!,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                    modifier = Modifier.padding(8.dp)
+                                )
+                            }
+                        }
+
+                        val resolvedCurrentModel = if (availableModelIds.contains(currentModel)) {
+                            currentModel
+                        } else {
+                            val fallback = viewModel.aiFactory.modelSelectionRepository.getCompatibleFallback(selectedTab, currentModel, discoveredModels)
+                            fallback?.id ?: AIModelRegistry.resolveModel(selectedTab, currentModel)
+                        }
+
+                        LaunchedEffect(selectedTab, currentModel, availableModelIds) {
+                            if (resolvedCurrentModel != currentModel) {
+                                onModelChange(resolvedCurrentModel)
+                            }
+                        }
                         var modelDropdownExpanded by remember { mutableStateOf(false) }
 
                         Box(modifier = Modifier.fillMaxWidth()) {
@@ -308,12 +377,14 @@ fun AIProviderSettingsDialog(
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text(currentModel, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                                        Text(resolvedCurrentModel, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
                                         Text("▼", style = MaterialTheme.typography.labelSmall)
                                     }
                                     Spacer(modifier = Modifier.height(2.dp))
+                                    val desc = discoveredModels.firstOrNull { it.id == resolvedCurrentModel }?.description
+                                        ?: AIModelRegistry.getModelDescription(resolvedCurrentModel)
                                     Text(
-                                        AIModelRegistry.getModelDescription(currentModel),
+                                        desc,
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -325,28 +396,75 @@ fun AIProviderSettingsDialog(
                                 onDismissRequest = { modelDropdownExpanded = false },
                                 modifier = Modifier.fillMaxWidth(0.85f)
                             ) {
-                                availableModels.forEach { model ->
-                                    DropdownMenuItem(
-                                        text = {
-                                            Column {
-                                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                                    if (currentModel == model) {
-                                                        Text("✓ ", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                                if (discoveredModels.isNotEmpty()) {
+                                    discoveredModels.forEach { modelItem ->
+                                        DropdownMenuItem(
+                                            text = {
+                                                Column {
+                                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                                        if (currentModel == modelItem.id) {
+                                                            Text("✓ ", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                                                        }
+                                                        Text(modelItem.displayName, fontWeight = FontWeight.SemiBold)
+                                                        if (modelItem.isImageGeneration) {
+                                                            Spacer(modifier = Modifier.width(6.dp))
+                                                            Surface(
+                                                                shape = RoundedCornerShape(4.dp),
+                                                                color = MaterialTheme.colorScheme.tertiaryContainer
+                                                            ) {
+                                                                Text(
+                                                                    "IMAGE",
+                                                                    style = MaterialTheme.typography.labelSmall,
+                                                                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                                )
+                                                            }
+                                                        }
                                                     }
-                                                    Text(model, fontWeight = FontWeight.SemiBold)
+                                                    Text(
+                                                        "ID: ${modelItem.id}",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.primary
+                                                    )
+                                                    if (!modelItem.description.isNullOrBlank()) {
+                                                        Text(
+                                                            modelItem.description,
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                        )
+                                                    }
                                                 }
-                                                Text(
-                                                    AIModelRegistry.getModelDescription(model),
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
+                                            },
+                                            onClick = {
+                                                onModelChange(modelItem.id)
+                                                modelDropdownExpanded = false
                                             }
-                                        },
-                                        onClick = {
-                                            onModelChange(model)
-                                            modelDropdownExpanded = false
-                                        }
-                                    )
+                                        )
+                                    }
+                                } else {
+                                    availableModelIds.forEach { model ->
+                                        DropdownMenuItem(
+                                            text = {
+                                                Column {
+                                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                                        if (currentModel == model) {
+                                                            Text("✓ ", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                                                        }
+                                                        Text(model, fontWeight = FontWeight.SemiBold)
+                                                    }
+                                                    Text(
+                                                        AIModelRegistry.getModelDescription(model),
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                }
+                                            },
+                                            onClick = {
+                                                onModelChange(model)
+                                                modelDropdownExpanded = false
+                                            }
+                                        )
+                                    }
                                 }
                             }
                         }

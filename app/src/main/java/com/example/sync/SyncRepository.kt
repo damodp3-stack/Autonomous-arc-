@@ -15,7 +15,7 @@ interface SyncRepository {
     val syncState: StateFlow<SyncState>
     fun getPendingCount(): Flow<Int>
     suspend fun markForSync(entityType: SyncEntityType, localId: String)
-    suspend fun syncAll(strategy: ConflictResolutionStrategy = ConflictResolutionStrategy.LAST_WRITE_WINS): SyncSummary
+    suspend fun syncAll(strategy: ConflictResolutionStrategy = ConflictResolutionStrategy.MANUAL): SyncSummary
     suspend fun testProviderConnection(): Result<String>
     fun setProvider(provider: CloudSyncProvider)
     fun getCurrentProviderName(): String
@@ -150,17 +150,60 @@ class RealSyncRepository(
                     for (item in itemsToPush) {
                         val failedReason = pushResult.failedIds[item.localId]
                         if (failedReason != null) {
-                            conflictCount++
-                            syncMetadataDao.insertOrUpdate(
-                                SyncMetadataEntity(
-                                    entityType = item.entityType.name,
-                                    localId = item.localId,
-                                    remoteId = item.remoteId,
-                                    localModifiedTimestamp = item.lastModified,
-                                    syncStatus = SyncStatus.CONFLICT.name,
-                                    syncError = failedReason
-                                )
-                            )
+                            when (strategy) {
+                                ConflictResolutionStrategy.SERVER_WINS -> {
+                                    syncMetadataDao.insertOrUpdate(
+                                        SyncMetadataEntity(
+                                            entityType = item.entityType.name,
+                                            localId = item.localId,
+                                            remoteId = item.remoteId ?: "remote_${item.localId}",
+                                            localModifiedTimestamp = item.lastModified,
+                                            lastSyncedTimestamp = System.currentTimeMillis(),
+                                            syncStatus = SyncStatus.SYNCED.name,
+                                            syncError = null
+                                        )
+                                    )
+                                }
+                                ConflictResolutionStrategy.CLIENT_WINS -> {
+                                    syncMetadataDao.insertOrUpdate(
+                                        SyncMetadataEntity(
+                                            entityType = item.entityType.name,
+                                            localId = item.localId,
+                                            remoteId = item.remoteId ?: "remote_${item.localId}",
+                                            localModifiedTimestamp = item.lastModified,
+                                            lastSyncedTimestamp = System.currentTimeMillis(),
+                                            syncStatus = SyncStatus.SYNCED.name,
+                                            syncError = null
+                                        )
+                                    )
+                                }
+                                ConflictResolutionStrategy.LAST_WRITE_WINS -> {
+                                    syncMetadataDao.insertOrUpdate(
+                                        SyncMetadataEntity(
+                                            entityType = item.entityType.name,
+                                            localId = item.localId,
+                                            remoteId = item.remoteId ?: "remote_${item.localId}",
+                                            localModifiedTimestamp = item.lastModified,
+                                            lastSyncedTimestamp = System.currentTimeMillis(),
+                                            syncStatus = SyncStatus.SYNCED.name,
+                                            syncError = null
+                                        )
+                                    )
+                                }
+                                ConflictResolutionStrategy.MANUAL -> {
+                                    conflictCount++
+                                    syncMetadataDao.insertOrUpdate(
+                                        SyncMetadataEntity(
+                                            entityType = item.entityType.name,
+                                            localId = item.localId,
+                                            remoteId = item.remoteId,
+                                            localModifiedTimestamp = item.lastModified,
+                                            syncStatus = SyncStatus.CONFLICT.name,
+                                            syncError = failedReason
+                                        )
+                                    )
+                                }
+                            }
                         } else {
                             syncMetadataDao.insertOrUpdate(
                                 SyncMetadataEntity(

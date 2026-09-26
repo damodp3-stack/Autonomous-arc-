@@ -8,6 +8,7 @@ import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 import retrofit2.http.Body
+import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.POST
 import java.util.concurrent.TimeUnit
@@ -49,6 +50,19 @@ data class OpenAIChatResponse(
     @Json(name = "usage") val usage: OpenAIUsage? = null
 )
 
+@JsonClass(generateAdapter = true)
+data class OpenAIModelDto(
+    @Json(name = "id") val id: String,
+    @Json(name = "object") val objectType: String? = null,
+    @Json(name = "created") val created: Long? = null,
+    @Json(name = "owned_by") val ownedBy: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class OpenAIListModelsResponse(
+    @Json(name = "data") val data: List<OpenAIModelDto>? = null
+)
+
 interface OpenAIApiService {
     @POST("v1/chat/completions")
     suspend fun createChatCompletion(
@@ -56,6 +70,11 @@ interface OpenAIApiService {
         @Header("Content-Type") contentType: String = "application/json",
         @Body request: OpenAIChatRequest
     ): OpenAIChatResponse
+
+    @GET("v1/models")
+    suspend fun listModels(
+        @Header("Authorization") authorization: String
+    ): OpenAIListModelsResponse
 }
 
 object OpenAIRetrofitClient {

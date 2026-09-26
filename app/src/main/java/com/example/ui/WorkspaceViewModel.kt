@@ -64,7 +64,7 @@ class WorkspaceViewModel(
     private val messageRepository: MessageRepository,
     private val projectRepository: ProjectRepository,
     val fileRepository: ProjectFileRepository,
-    private val aiFactory: com.example.ai.AIFactory,
+    val aiFactory: com.example.ai.AIFactory,
     val apiKeyManager: com.example.ai.APIKeyManager,
     val configRepository: com.example.data.AIProviderConfigRepository? = null,
     val usageRepository: com.example.data.UsageRepository? = null
@@ -115,18 +115,20 @@ class WorkspaceViewModel(
     }
 
     fun setModel(modelName: String) {
-        _selectedModel.value = modelName
+        val resolved = com.example.ai.AIModelRegistry.resolveModel(_selectedProvider.value, modelName)
+        _selectedModel.value = resolved
         viewModelScope.launch {
-            configRepository?.updateModelForProvider(_selectedProvider.value, modelName)
+            configRepository?.updateModelForProvider(_selectedProvider.value, resolved)
         }
     }
 
     fun saveProviderSettings(providerType: String, apiKey: String, model: String) {
+        val resolvedModel = com.example.ai.AIModelRegistry.resolveModel(providerType, model)
         apiKeyManager.saveApiKey(providerType, apiKey.trim())
         viewModelScope.launch {
-            configRepository?.updateModelForProvider(providerType, model.trim())
+            configRepository?.updateModelForProvider(providerType, resolvedModel)
             if (_selectedProvider.value.equals(providerType, ignoreCase = true)) {
-                _selectedModel.value = model.trim()
+                _selectedModel.value = resolvedModel
             }
         }
     }
@@ -142,6 +144,18 @@ class WorkspaceViewModel(
                 "Error: ${result.exceptionOrNull()?.message ?: "Unknown error"}"
             }
             _isTestingConnection.value = false
+        }
+    }
+
+    fun refreshModelsForProvider(providerType: String, apiKey: String) {
+        viewModelScope.launch {
+            val result = aiFactory.modelSelectionRepository.refreshModels(providerType, apiKey)
+            if (result.isSuccess) {
+                val list = result.getOrNull().orEmpty()
+                if (list.isNotEmpty()) {
+                    _availableModels.value = list.map { it.id }
+                }
+            }
         }
     }
 
@@ -221,7 +235,13 @@ class WorkspaceViewModel(
                     }
                     _selectedProvider.value = pName
                     _availableModels.value = com.example.ai.AIModelRegistry.getAvailableModels(pName)
-                    _selectedModel.value = active.selectedModel.ifBlank { com.example.ai.AIModelRegistry.getDefaultModel(pName) }
+                    val resolved = com.example.ai.AIModelRegistry.resolveModel(pName, active.selectedModel)
+                    _selectedModel.value = resolved
+                    if (resolved != active.selectedModel) {
+                        viewModelScope.launch {
+                            configRepository.updateModelForProvider(pName, resolved)
+                        }
+                    }
                 }
             }
         }
@@ -307,6 +327,23 @@ class WorkspaceViewModel(
                     isUser = false
                 ))
             } catch (e: Exception) {
+                val errorMsg = e.message ?: "Unknown error"
+                val is404ModelError = errorMsg.contains("404") || errorMsg.contains("not found", ignoreCase = true) || errorMsg.contains("unsupported", ignoreCase = true)
+                if (is404ModelError) {
+                    val available = aiFactory.modelSelectionRepository.getCachedModels(_selectedProvider.value)
+                    val fallback = aiFactory.modelSelectionRepository.getCompatibleFallback(_selectedProvider.value, _selectedModel.value, available)
+                    if (fallback != null && fallback.id != _selectedModel.value) {
+                        val oldModel = _selectedModel.value
+                        _selectedModel.value = fallback.id
+                        configRepository?.updateModelForProvider(_selectedProvider.value, fallback.id)
+                        messageRepository.insert(MessageEntity(
+                            projectId = projectId,
+                            text = "Model Fallback: Selected model '$oldModel' was unavailable on the API (HTTP 404). Automatically switched to compatible live model '${fallback.id}'.",
+                            isUser = false
+                        ))
+                    }
+                }
+
                 usageRepository?.recordUsage(
                     provider = _selectedProvider.value,
                     model = _selectedModel.value,
@@ -360,7 +397,23 @@ class WorkspaceViewModel(
                 
                 _proposalState.value = ProposalState.READY_FOR_REVIEW
             } catch (e: Exception) {
-                _proposalError.value = e.message ?: "An unknown error occurred"
+                val errorMsg = e.message ?: "An unknown error occurred"
+                val is404ModelError = errorMsg.contains("404") || errorMsg.contains("not found", ignoreCase = true) || errorMsg.contains("unsupported", ignoreCase = true)
+                if (is404ModelError) {
+                    val available = aiFactory.modelSelectionRepository.getCachedModels(_selectedProvider.value)
+                    val fallback = aiFactory.modelSelectionRepository.getCompatibleFallback(_selectedProvider.value, _selectedModel.value, available)
+                    if (fallback != null && fallback.id != _selectedModel.value) {
+                        val oldModel = _selectedModel.value
+                        _selectedModel.value = fallback.id
+                        configRepository?.updateModelForProvider(_selectedProvider.value, fallback.id)
+                        messageRepository.insert(MessageEntity(
+                            projectId = projectId,
+                            text = "Model Fallback: Selected model '$oldModel' was unavailable on the API (HTTP 404). Automatically switched to compatible live model '${fallback.id}'.",
+                            isUser = false
+                        ))
+                    }
+                }
+                _proposalError.value = errorMsg
                 _proposalState.value = ProposalState.FAILED
                 usageRepository?.recordUsage(
                     provider = _selectedProvider.value,

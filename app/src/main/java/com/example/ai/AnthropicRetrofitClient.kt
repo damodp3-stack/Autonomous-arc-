@@ -8,6 +8,7 @@ import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 import retrofit2.http.Body
+import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.POST
 import java.util.concurrent.TimeUnit
@@ -44,6 +45,18 @@ data class AnthropicResponse(
     @Json(name = "usage") val usage: AnthropicUsage? = null
 )
 
+@JsonClass(generateAdapter = true)
+data class AnthropicModelDto(
+    @Json(name = "id") val id: String,
+    @Json(name = "display_name") val displayName: String? = null,
+    @Json(name = "type") val type: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class AnthropicListModelsResponse(
+    @Json(name = "data") val data: List<AnthropicModelDto>? = null
+)
+
 interface AnthropicApiService {
     @POST("v1/messages")
     suspend fun createMessage(
@@ -52,6 +65,12 @@ interface AnthropicApiService {
         @Header("Content-Type") contentType: String = "application/json",
         @Body request: AnthropicRequest
     ): AnthropicResponse
+
+    @GET("v1/models")
+    suspend fun listModels(
+        @Header("x-api-key") apiKey: String,
+        @Header("anthropic-version") version: String = "2023-06-01"
+    ): AnthropicListModelsResponse
 }
 
 object AnthropicRetrofitClient {

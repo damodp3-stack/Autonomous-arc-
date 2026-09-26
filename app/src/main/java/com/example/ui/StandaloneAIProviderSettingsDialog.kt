@@ -3,6 +3,7 @@ package com.example.ui
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -55,13 +56,25 @@ fun StandaloneAIProviderSettingsDialog(
 
     LaunchedEffect(Unit) {
         val gCfg = configRepository.getConfigByProviderType("Gemini")
-        if (gCfg != null && gCfg.selectedModel.isNotBlank()) geminiModel = gCfg.selectedModel
+        if (gCfg != null && gCfg.selectedModel.isNotBlank()) {
+            val resolved = AIModelRegistry.resolveModel("Gemini", gCfg.selectedModel)
+            geminiModel = resolved
+            if (resolved != gCfg.selectedModel) configRepository.updateModelForProvider("Gemini", resolved)
+        }
 
         val oCfg = configRepository.getConfigByProviderType("OpenAI")
-        if (oCfg != null && oCfg.selectedModel.isNotBlank()) openaiModel = oCfg.selectedModel
+        if (oCfg != null && oCfg.selectedModel.isNotBlank()) {
+            val resolved = AIModelRegistry.resolveModel("OpenAI", oCfg.selectedModel)
+            openaiModel = resolved
+            if (resolved != oCfg.selectedModel) configRepository.updateModelForProvider("OpenAI", resolved)
+        }
 
         val aCfg = configRepository.getConfigByProviderType("Anthropic")
-        if (aCfg != null && aCfg.selectedModel.isNotBlank()) anthropicModel = aCfg.selectedModel
+        if (aCfg != null && aCfg.selectedModel.isNotBlank()) {
+            val resolved = AIModelRegistry.resolveModel("Anthropic", aCfg.selectedModel)
+            anthropicModel = resolved
+            if (resolved != aCfg.selectedModel) configRepository.updateModelForProvider("Anthropic", resolved)
+        }
     }
 
     Dialog(
@@ -180,8 +193,72 @@ fun StandaloneAIProviderSettingsDialog(
                         )
 
                         // Model Selector Dropdown
+                        val discoveryState by aiFactory.modelSelectionRepository.getModelsState(selectedTab).collectAsState()
+                        val discoveredModels = discoveryState.models
+                        val availableModelIds = if (discoveredModels.isNotEmpty()) discoveredModels.map { it.id } else AIModelRegistry.getAvailableModels(selectedTab)
+
+                        LaunchedEffect(selectedTab, currentKey) {
+                            if (currentKey.isNotBlank() && discoveryState.lastRefreshedTimestamp == null && !discoveryState.isLoading) {
+                                aiFactory.modelSelectionRepository.refreshModels(selectedTab, currentKey)
+                            }
+                        }
+
                         var modelDropdownExpanded by remember { mutableStateOf(false) }
-                        val models = AIModelRegistry.getAvailableModels(selectedTab)
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("Selected Model", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                                if (discoveryState.isFromCache) {
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = MaterialTheme.colorScheme.surfaceVariant
+                                    ) {
+                                        Text(
+                                            "CACHED",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                        )
+                                    }
+                                }
+                            }
+
+                            IconButton(
+                                onClick = {
+                                    coroutineScope.launch {
+                                        aiFactory.modelSelectionRepository.refreshModels(selectedTab, currentKey)
+                                    }
+                                },
+                                enabled = !discoveryState.isLoading && currentKey.isNotBlank(),
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                if (discoveryState.isLoading) {
+                                    CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                                } else {
+                                    Icon(Icons.Default.Refresh, contentDescription = "Refresh models", modifier = Modifier.size(16.dp))
+                                }
+                            }
+                        }
+
+                        if (discoveryState.errorMessage != null) {
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = discoveryState.errorMessage!!,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                    modifier = Modifier.padding(8.dp)
+                                )
+                            }
+                        }
 
                         ExposedDropdownMenuBox(
                             expanded = modelDropdownExpanded,
@@ -191,7 +268,7 @@ fun StandaloneAIProviderSettingsDialog(
                                 value = currentModel,
                                 onValueChange = {},
                                 readOnly = true,
-                                label = { Text("Selected Model") },
+                                label = { Text("Model ID") },
                                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = modelDropdownExpanded) },
                                 modifier = Modifier
                                     .menuAnchor()
@@ -201,18 +278,62 @@ fun StandaloneAIProviderSettingsDialog(
                                 expanded = modelDropdownExpanded,
                                 onDismissRequest = { modelDropdownExpanded = false }
                             ) {
-                                models.forEach { modelOption ->
-                                    DropdownMenuItem(
-                                        text = { Text(modelOption) },
-                                        onClick = {
-                                            when (selectedTab) {
-                                                "Gemini" -> geminiModel = modelOption
-                                                "OpenAI" -> openaiModel = modelOption
-                                                "Anthropic" -> anthropicModel = modelOption
+                                if (discoveredModels.isNotEmpty()) {
+                                    discoveredModels.forEach { modelOption ->
+                                        DropdownMenuItem(
+                                            text = {
+                                                Column {
+                                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                                        Text(modelOption.displayName, fontWeight = FontWeight.SemiBold)
+                                                        if (modelOption.isImageGeneration) {
+                                                            Spacer(modifier = Modifier.width(6.dp))
+                                                            Surface(
+                                                                shape = RoundedCornerShape(4.dp),
+                                                                color = MaterialTheme.colorScheme.tertiaryContainer
+                                                            ) {
+                                                                Text(
+                                                                    "IMAGE",
+                                                                    style = MaterialTheme.typography.labelSmall,
+                                                                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                    Text(modelOption.id, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                                                    if (!modelOption.description.isNullOrBlank()) {
+                                                        Text(
+                                                            modelOption.description,
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                        )
+                                                    }
+                                                }
+                                            },
+                                            onClick = {
+                                                when (selectedTab) {
+                                                    "Gemini" -> geminiModel = modelOption.id
+                                                    "OpenAI" -> openaiModel = modelOption.id
+                                                    "Anthropic" -> anthropicModel = modelOption.id
+                                                }
+                                                modelDropdownExpanded = false
                                             }
-                                            modelDropdownExpanded = false
-                                        }
-                                    )
+                                        )
+                                    }
+                                } else {
+                                    availableModelIds.forEach { modelOption ->
+                                        DropdownMenuItem(
+                                            text = { Text(modelOption) },
+                                            onClick = {
+                                                when (selectedTab) {
+                                                    "Gemini" -> geminiModel = modelOption
+                                                    "OpenAI" -> openaiModel = modelOption
+                                                    "Anthropic" -> anthropicModel = modelOption
+                                                }
+                                                modelDropdownExpanded = false
+                                            }
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -307,12 +428,13 @@ fun StandaloneAIProviderSettingsDialog(
                                     "Anthropic" -> anthropicKey
                                     else -> ""
                                 }
-                                val modelToSave = when (selectedTab) {
+                                val rawModel = when (selectedTab) {
                                     "Gemini" -> geminiModel
                                     "OpenAI" -> openaiModel
                                     "Anthropic" -> anthropicModel
                                     else -> "mock-default"
                                 }
+                                val modelToSave = AIModelRegistry.resolveModel(selectedTab, rawModel)
                                 if (selectedTab != "Mock") {
                                     apiKeyManager.saveApiKey(selectedTab, keyToSave.trim())
                                     configRepository.updateModelForProvider(selectedTab, modelToSave.trim())

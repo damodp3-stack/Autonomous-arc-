@@ -47,6 +47,7 @@ fun AppNavigation() {
     val projectRepository = remember { LocalProjectRepository(database.projectDao(), database.messageDao(), fileRepository) }
     val usageRepository = remember { LocalUsageRepository(database.usageDao()) }
     val mediaRepository = remember { LocalMediaRepository(database.mediaDao(), context) }
+    val mediaGenerationProvider = remember { com.example.ai.GeminiMediaGenerationProvider(mediaRepository, apiKeyManager) }
     val ideaRepository = remember { LocalIdeaRepository(database.ideaDao()) }
     val syncRepository = remember {
         RealSyncRepository(
@@ -156,7 +157,7 @@ fun AppNavigation() {
             // 3. Media Vault tab
             composable("media") {
                 val viewModel: MediaVaultViewModel = viewModel(
-                    factory = MediaVaultViewModelFactory(mediaRepository)
+                    factory = MediaVaultViewModelFactory(mediaRepository, mediaGenerationProvider)
                 )
                 MediaVaultScreen(
                     viewModel = viewModel,

@@ -7,7 +7,8 @@ import kotlinx.coroutines.withContext
 
 open class AIFactory(
     private val configRepository: AIProviderConfigRepository,
-    private val keyManager: APIKeyManager
+    private val keyManager: APIKeyManager,
+    val modelSelectionRepository: ModelSelectionRepository = RealModelSelectionRepository()
 ) {
     open suspend fun getProvider(projectName: String, uiSelectedProvider: String? = null): AIProvider {
         return getProviderInternal(projectName, uiSelectedProvider, null)
@@ -69,10 +70,10 @@ open class AIFactory(
         apiKey: String,
         model: String
     ): Result<String> = withContext(Dispatchers.IO) {
-        if (model.isBlank() && providerType.uppercase() != "MOCK") {
+        val actualModel = model.trim().removePrefix("models/")
+        if (actualModel.isBlank() && providerType.uppercase() != "MOCK") {
             return@withContext Result.failure(IllegalArgumentException("Model name cannot be blank."))
         }
-        val effectiveModel = model.ifBlank { AIModelRegistry.getDefaultModel(providerType) }
         try {
             when (providerType.uppercase()) {
                 "GEMINI" -> {
@@ -85,8 +86,8 @@ open class AIFactory(
                     val request = GenerateContentRequest(
                         contents = listOf(Content(parts = listOf(Part(text = "ping"))))
                     )
-                    GeminiRetrofitClient.service.generateContent(effectiveModel, keyToUse, request)
-                    Result.success("Successfully connected to Gemini ($effectiveModel)!")
+                    GeminiRetrofitClient.service.generateContent(actualModel, keyToUse, request)
+                    Result.success("Successfully connected to Gemini ($actualModel)!")
                 }
                 "OPENAI" -> {
                     val keyToUse = apiKey.trim().ifBlank {
@@ -96,11 +97,11 @@ open class AIFactory(
                         return@withContext Result.failure(IllegalArgumentException("OpenAI API key cannot be blank."))
                     }
                     val request = OpenAIChatRequest(
-                        model = effectiveModel,
+                        model = actualModel,
                         messages = listOf(OpenAIMessage(role = "user", content = "ping"))
                     )
                     OpenAIRetrofitClient.service.createChatCompletion("Bearer $keyToUse", request = request)
-                    Result.success("Successfully connected to OpenAI ($effectiveModel)!")
+                    Result.success("Successfully connected to OpenAI ($actualModel)!")
                 }
                 "ANTHROPIC" -> {
                     val keyToUse = apiKey.trim().ifBlank {
@@ -110,12 +111,12 @@ open class AIFactory(
                         return@withContext Result.failure(IllegalArgumentException("Anthropic API key cannot be blank."))
                     }
                     val request = AnthropicRequest(
-                        model = effectiveModel,
+                        model = actualModel,
                         messages = listOf(AnthropicMessage(role = "user", content = "ping")),
                         maxTokens = 10
                     )
                     AnthropicRetrofitClient.service.createMessage(apiKey = keyToUse, request = request)
-                    Result.success("Successfully connected to Anthropic ($effectiveModel)!")
+                    Result.success("Successfully connected to Anthropic ($actualModel)!")
                 }
                 else -> {
                     Result.success("Connected to local Mock provider successfully.")
@@ -123,13 +124,22 @@ open class AIFactory(
             }
         } catch (e: retrofit2.HttpException) {
             val friendlyMsg = when (e.code()) {
-                401, 403 -> "Authentication failed (HTTP ${e.code()}): Invalid or unauthorized API key."
-                404 -> "Model '$effectiveModel' not found or unsupported (HTTP 404)."
-                429 -> "Rate limit or quota exceeded (HTTP 429)."
-                in 500..599 -> "Provider service temporarily unavailable (HTTP ${e.code()})."
+                401 -> "Invalid API key (HTTP 401): Authentication failed for $providerType. Please verify your API key."
+                403 -> "Unauthorized or forbidden (HTTP 403): The provided key does not have permission to access '$actualModel'."
+                404 -> "Model '$actualModel' not found or unsupported (HTTP 404). This model is unavailable on the current $providerType API. Please use model discovery to select an active model (e.g. gemini-3.1-flash-lite-preview or gemini-flash-latest)."
+                429 -> "Rate limit or quota exceeded (HTTP 429): Quota limit reached for $providerType. Please check your billing or plan limits."
+                400 -> "Malformed request (HTTP 400): Model parameter '$actualModel' was rejected by $providerType."
+                503 -> "Provider service high demand (HTTP 503): Service temporarily unavailable. The model is valid; please retry shortly."
+                in 500..599 -> "Provider server error (HTTP ${e.code()}): Internal error at $providerType."
                 else -> "HTTP error ${e.code()}: ${e.message()}"
             }
             Result.failure(Exception(friendlyMsg, e))
+        } catch (e: java.net.UnknownHostException) {
+            Result.failure(Exception("Network failure: Unable to reach $providerType servers. Please check your internet connection.", e))
+        } catch (e: java.net.SocketTimeoutException) {
+            Result.failure(Exception("Request timed out: $providerType did not respond within timeout limits.", e))
+        } catch (e: IllegalArgumentException) {
+            Result.failure(e)
         } catch (e: Exception) {
             Result.failure(Exception(e.message ?: "Connection test failed", e))
         }

@@ -41,15 +41,16 @@ class AIProviderConfigRepository(private val dao: AIProviderConfigDao) {
     }
 
     suspend fun updateModelForProvider(providerType: String, model: String) {
+        val resolvedModel = AIModelRegistry.resolveModel(providerType, model)
         val existing = dao.getConfigByProviderType(providerType)
         if (existing != null) {
-            dao.updateConfig(existing.copy(selectedModel = model))
+            dao.updateConfig(existing.copy(selectedModel = resolvedModel))
         } else {
             val newConfig = AIProviderConfigEntity(
                 id = "${providerType.lowercase()}_default",
                 providerType = providerType.uppercase(),
                 name = providerType.lowercase().replaceFirstChar { it.uppercase() },
-                selectedModel = model,
+                selectedModel = resolvedModel,
                 isActive = false
             )
             dao.insertConfig(newConfig)
@@ -83,6 +84,14 @@ class AIProviderConfigRepository(private val dao: AIProviderConfigDao) {
                 )
             )
             defaults.forEach { dao.insertConfig(it) }
+        } else {
+            // Self-healing migration: resolve any deprecated or invalid model names
+            all.forEach { config ->
+                val resolved = AIModelRegistry.resolveModel(config.providerType, config.selectedModel)
+                if (resolved != config.selectedModel) {
+                    dao.updateConfig(config.copy(selectedModel = resolved))
+                }
+            }
         }
     }
 

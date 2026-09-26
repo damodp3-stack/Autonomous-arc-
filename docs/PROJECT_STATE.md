@@ -3,9 +3,56 @@
 This document represents the current actual state of the repository.
 
 **Current Stage**
-Phase 8 — Product-Level Vaults, Usage Analytics & Cloud-Sync Foundation (Completed).
+Phase 9 — Live AI Model Discovery, Gemini 404 Resolution, Provider Hardening & Real Cloud/Media Foundation (Completed).
 
 **Completed**
+- **Live AI Model Discovery Architecture (`DiscoveredModel`, `ModelDiscoveryProvider`, `GeminiModelDiscoveryProvider`, `OpenAIModelDiscoveryProvider`, `AnthropicModelDiscoveryProvider`, `MockModelDiscoveryProvider`):**
+  - Eliminated stale hardcoded model assumptions (`gemini-2.0-flash`, `gemini-1.5-pro`, `gemini-1.5-flash`).
+  - Implemented live model discovery calling `GET v1beta/models`, authenticating via configured API key, and filtering out obsolete/deprecated models while verifying `generateContent` capability.
+  - Exposes model ID, display name, description, generation methods, image generation capability flags, and token limits.
+  - Multi-provider support for Gemini, OpenAI (`v1/models`), Anthropic (`v1/models`), and Mock providers.
+
+- **Model Selection Repository & Caching (`ModelSelectionRepository`, `RealModelSelectionRepository`, `ModelDiscoveryState`):**
+  - Manages reactive discovery state flows (`isLoading`, `models`, `errorMessage`, `lastRefreshedTimestamp`, `isFromCache`).
+  - Thread-safe in-memory and fallback caching without storing sensitive credentials in model caches.
+  - Graceful network degradation: preserves last known good discovered models on network error and alerts user via state.
+
+- **Refactored Model Registry & Static Catalog (`AIModelCatalog`, `AIModelRegistry`):**
+  - Separated static catalog fallback metadata (`AIModelCatalog`) from live provider availability.
+  - `AIModelRegistry` preserved with 100% backward compatibility for all legacy tests while delegating to verified models.
+
+- **Upgraded Connection Diagnostics (`AIFactory.testConnection`):**
+  - Tests the ACTUAL selected provider and ACTUAL selected model without silent pre-substitution.
+  - Differentiates specific error categories:
+    - HTTP 401: Invalid API key.
+    - HTTP 403: Forbidden / unauthorized project access.
+    - HTTP 404: Selected model is unavailable, shut down, or unsupported on the provider API.
+    - HTTP 429: Rate limit or quota exhausted.
+    - HTTP 503: Service high demand / temporary overload.
+    - HTTP 500-599: Internal provider server errors.
+    - `UnknownHostException` / `SocketTimeoutException`: Network connection and timeout failures.
+
+- **Automatic Model Fallback & Transparency (`WorkspaceViewModel.sendMessage`, `proposeChange`):**
+  - Detects runtime 404 / unavailable model errors during generation and code proposal generation.
+  - Selects compatible live model via `getCompatibleFallback` (preserving text/code vs image capabilities).
+  - Automatically updates and persists new selection in `AIProviderConfigRepository`.
+  - Informs the user explicitly via chat timeline message about the fallback switch.
+
+- **Real Media Generation Foundation (`MediaGenerationProvider`, `GeminiMediaGenerationProvider`, `MockMediaGenerationProvider`, `MediaCapability`):**
+  - Clean provider abstraction exposing capabilities (`IMAGE`, `VIDEO`, `TEXT_TO_IMAGE`, `IMAGE_TO_IMAGE`, `TEXT_TO_VIDEO`, `IMAGE_TO_VIDEO`), available models, and request/result objects.
+  - `GeminiMediaGenerationProvider` uses real REST endpoint `generateContent` with `responseModalities: ["TEXT", "IMAGE"]` and `imageConfig` aspect ratio.
+  - Decodes base64 `inlineData` image bytes, saves into app-private storage, inserts `MediaEntity` into Room, and associates with project/chat.
+  - Tested against real Gemini endpoint; verified that free tier requires billing for image generation (HTTP 429 RESOURCE_EXHAUSTED with limit 0), cleanly reporting the limitation without faking.
+  - `MockMediaGenerationProvider` provides offline mock generation.
+
+- **Production Cloud Sync Adapter (`RestCloudSyncProvider`, `RealSyncRepository`):**
+  - Implemented production-ready HTTP/REST cloud sync provider adapter using OkHttp.
+  - Enforced conflict resolution strategies (`SERVER_WINS`, `CLIENT_WINS`, `LAST_WRITE_WINS`, `MANUAL`) in `RealSyncRepository`.
+
+- **Dynamic Model Selection UI & Media Generation UX:**
+  - `AIProviderSettingsDialog` & `StandaloneAIProviderSettingsDialog`: "Refresh Models" action, loading spinner, error banners, cached badges, model ID and description display.
+  - `MediaVaultScreen`: Integrated AI image generation mode with prompt input, model selector, progress indicator, and status banner.
+
 - **Token & Usage Analytics Dashboard (`UsageRecordEntity`, `UsageDao`, `LocalUsageRepository`, `UsageAnalyticsViewModel`, `UsageAnalyticsScreen`):**
   - Persistent Room storage (`usage_records`) recording prompt tokens, completion tokens, total tokens, provider, model, timestamp, request status (`SUCCESS`, `ERROR`), and safe truncated error info without storing sensitive API keys or full prompt texts.
   - High-performance aggregation logic generating `UsageSummary` with KPI metrics (total requests, token counts, success/failure counts, provider breakdown, model breakdown).
@@ -45,7 +92,7 @@ Phase 8 — Product-Level Vaults, Usage Analytics & Cloud-Sync Foundation (Compl
   - Configurable `KEY_ALIAS` support in `app/build.gradle.kts` alongside `KEYSTORE_PATH`, `STORE_PASSWORD`, and `KEY_PASSWORD`.
 
 - **Unit & Robolectric Test Suite:**
-  - **136/136 unit and Robolectric tests passed** (0 failures, 0 errors, 0 skipped across 19 test suites).
+  - **147/147 unit and Robolectric tests passed** (0 failures, 0 errors, 0 skipped across 20 test suites).
 
 - **Build Artifacts Verified Locally:**
   - Debug APK: `app/build/outputs/apk/debug/app-debug.apk` (27 MB)
@@ -53,17 +100,18 @@ Phase 8 — Product-Level Vaults, Usage Analytics & Cloud-Sync Foundation (Compl
   - Release Bundle (AAB): `app/build/outputs/bundle/release/app-release.aab` (16 MB)
 
 **Pending**
-- Remote cloud provider integration (e.g. Supabase, Firebase, or custom backend adapter) plugged into `CloudSyncProvider`.
-- Real media generation API integration plugged into `MediaRepository`.
+- Expanded cloud sync backends (e.g. Supabase, Firebase Cloud Firestore).
+- Upgraded Gemini plan for billing-enabled image generation.
 
 **Errors / Bugs**
-- None. All 136 unit tests pass cleanly. Debug APK, Release APK, and Release AAB build without error.
+- None. All 147 unit tests pass cleanly. Debug APK, Release APK, and Release AAB build without error.
 
 **Verified**
 - **Unit & Robolectric Test Suite:**
   - Command: `gradle :app:testDebugUnitTest`
-  - Result: 136 tests completed, 0 failures, 0 errors, 0 skipped.
+  - Result: 147 tests completed, 0 failures, 0 errors, 0 skipped.
   - Test suites:
+    - `com.example.ai.Phase9HardeningTest` (10/10 passed)
     - `com.example.data.UsageAnalyticsTest` (5/5 passed)
     - `com.example.data.MediaVaultTest` (5/5 passed)
     - `com.example.data.IdeasVaultTest` (5/5 passed)

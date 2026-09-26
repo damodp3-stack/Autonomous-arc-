@@ -22,7 +22,8 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 
 class MediaVaultViewModel(
-    private val mediaRepository: MediaRepository
+    private val mediaRepository: MediaRepository,
+    val mediaGenerationProvider: com.example.ai.MediaGenerationProvider? = null
 ) : ViewModel() {
 
     private val _filterType = MutableStateFlow("ALL")
@@ -30,6 +31,12 @@ class MediaVaultViewModel(
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
+
+    private val _isGeneratingMedia = MutableStateFlow(false)
+    val isGeneratingMedia: StateFlow<Boolean> = _isGeneratingMedia.asStateFlow()
+
+    private val _generationStatus = MutableStateFlow<String?>(null)
+    val generationStatus: StateFlow<String?> = _generationStatus.asStateFlow()
 
     private val allMedia = mediaRepository.getAllMedia()
 
@@ -84,6 +91,34 @@ class MediaVaultViewModel(
         return mediaRepository.getMediaFile(media)
     }
 
+    fun generateMediaAsset(prompt: String, model: String? = null, projectAssociation: String? = null) {
+        if (prompt.isBlank()) return
+        viewModelScope.launch {
+            _isGeneratingMedia.value = true
+            _generationStatus.value = "Contacting AI media provider..."
+            val provider = mediaGenerationProvider ?: com.example.ai.MockMediaGenerationProvider(mediaRepository)
+            val result = provider.generateMedia(
+                com.example.ai.MediaGenerationRequest(
+                    prompt = prompt,
+                    capability = com.example.ai.MediaCapability.TEXT_TO_IMAGE,
+                    model = model,
+                    projectAssociation = projectAssociation
+                )
+            )
+            if (result.isSuccess) {
+                val res = result.getOrNull()
+                _generationStatus.value = "Success: Image generated via ${res?.modelUsed ?: "AI"} and saved to Vault."
+            } else {
+                _generationStatus.value = "Generation notice: ${result.exceptionOrNull()?.message}"
+            }
+            _isGeneratingMedia.value = false
+        }
+    }
+
+    fun clearGenerationStatus() {
+        _generationStatus.value = null
+    }
+
     /**
      * Creates a sample image asset in the vault for immediate local testing & use.
      */
@@ -136,12 +171,13 @@ class MediaVaultViewModel(
 }
 
 class MediaVaultViewModelFactory(
-    private val mediaRepository: MediaRepository
+    private val mediaRepository: MediaRepository,
+    private val mediaGenerationProvider: com.example.ai.MediaGenerationProvider? = null
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(MediaVaultViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            return MediaVaultViewModel(mediaRepository) as T
+            return MediaVaultViewModel(mediaRepository, mediaGenerationProvider) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
     }
