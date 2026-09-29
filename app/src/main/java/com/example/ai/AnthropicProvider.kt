@@ -7,8 +7,9 @@ import kotlinx.coroutines.withContext
 class AnthropicProvider(
     private val projectName: String,
     private val providedApiKey: String? = null,
-    val model: String = "claude-3-5-sonnet-20241022"
+    model: String = "claude-3-5-sonnet-20241022"
 ) : AIProvider {
+    val model: String = ModelIdNormalizer.normalize(model).ifBlank { "claude-3-5-sonnet-20241022" }
     private var latestUsage: TokenUsage? = null
 
     override fun getLatestUsage(): TokenUsage? = latestUsage

@@ -10,12 +10,14 @@ data class ModelDiscoveryState(
     val models: List<DiscoveredModel> = emptyList(),
     val errorMessage: String? = null,
     val lastRefreshedTimestamp: Long? = null,
-    val isFromCache: Boolean = false
+    val isFromCache: Boolean = false,
+    val statusMessage: String = "Model availability not verified"
 )
 
 interface ModelSelectionRepository {
     fun getModelsState(providerType: String): StateFlow<ModelDiscoveryState>
     fun getCachedModels(providerType: String): List<DiscoveredModel>
+    fun getLastDiscoveryTimestamp(providerType: String): Long?
     suspend fun refreshModels(providerType: String, apiKey: String): Result<List<DiscoveredModel>>
     fun getCompatibleFallback(providerType: String, unavailableModel: String, availableModels: List<DiscoveredModel>): DiscoveredModel?
 }
@@ -26,22 +28,41 @@ class RealModelSelectionRepository(
         "OPENAI" to OpenAIModelDiscoveryProvider(),
         "ANTHROPIC" to AnthropicModelDiscoveryProvider(),
         "MOCK" to MockModelDiscoveryProvider()
-    )
+    ),
+    private val onDiscoveryTimestampUpdated: (suspend (providerType: String, timestamp: Long) -> Unit)? = null
 ) : ModelSelectionRepository {
 
+    // Thread-safe in-memory cache of live-discovered models only.
+    // Never populated with static catalog models as if they were live.
+    // Never contains sensitive credentials or API keys.
     private val cache = ConcurrentHashMap<String, List<DiscoveredModel>>()
+    private val lastDiscoveryTimestamps = ConcurrentHashMap<String, Long>()
     private val states = ConcurrentHashMap<String, MutableStateFlow<ModelDiscoveryState>>()
 
     private fun getOrCreateState(providerType: String): MutableStateFlow<ModelDiscoveryState> {
         val key = providerType.uppercase()
         return states.computeIfAbsent(key) {
-            val initialFallback = AIModelCatalog.getCatalogForProvider(key)
-            MutableStateFlow(
-                ModelDiscoveryState(
-                    models = initialFallback,
-                    isFromCache = true
+            val cached = cache[key]
+            val timestamp = lastDiscoveryTimestamps[key]
+            if (cached != null && cached.isNotEmpty()) {
+                MutableStateFlow(
+                    ModelDiscoveryState(
+                        models = cached,
+                        isFromCache = true,
+                        lastRefreshedTimestamp = timestamp,
+                        statusMessage = "Cached models (${cached.size} available)"
+                    )
                 )
-            )
+            } else {
+                MutableStateFlow(
+                    ModelDiscoveryState(
+                        models = emptyList(),
+                        isFromCache = false,
+                        lastRefreshedTimestamp = null,
+                        statusMessage = "Model availability not verified"
+                    )
+                )
+            }
         }
     }
 
@@ -51,51 +72,83 @@ class RealModelSelectionRepository(
 
     override fun getCachedModels(providerType: String): List<DiscoveredModel> {
         val key = providerType.uppercase()
-        return cache[key] ?: AIModelCatalog.getCatalogForProvider(key)
+        // Authoritative: returns only previously discovered and cached models
+        return cache[key] ?: emptyList()
+    }
+
+    override fun getLastDiscoveryTimestamp(providerType: String): Long? {
+        val key = providerType.uppercase()
+        return lastDiscoveryTimestamps[key]
     }
 
     override suspend fun refreshModels(providerType: String, apiKey: String): Result<List<DiscoveredModel>> {
         val key = providerType.uppercase()
         val stateFlow = getOrCreateState(key)
+        val cleanKey = apiKey.trim()
+
+        if (cleanKey.isBlank() && key != "MOCK") {
+            val msg = "API key required — model availability not verified."
+            stateFlow.value = stateFlow.value.copy(
+                isLoading = false,
+                errorMessage = msg,
+                statusMessage = msg
+            )
+            return Result.failure(IllegalArgumentException(msg))
+        }
+
         stateFlow.value = stateFlow.value.copy(isLoading = true, errorMessage = null)
 
         val discoveryProvider = providers[key]
         if (discoveryProvider == null) {
             val err = "No model discovery provider registered for '$providerType'"
-            stateFlow.value = stateFlow.value.copy(isLoading = false, errorMessage = err)
+            stateFlow.value = stateFlow.value.copy(
+                isLoading = false,
+                errorMessage = err,
+                statusMessage = "Model availability not verified"
+            )
             return Result.failure(IllegalArgumentException(err))
         }
 
-        val result = discoveryProvider.discoverModels(apiKey)
+        val result = discoveryProvider.discoverModels(cleanKey)
         return if (result.isSuccess) {
             val discovered = result.getOrNull().orEmpty()
-            cache[key] = discovered
             val now = System.currentTimeMillis()
+            cache[key] = discovered
+            lastDiscoveryTimestamps[key] = now
+
             stateFlow.value = ModelDiscoveryState(
                 isLoading = false,
                 models = discovered,
                 errorMessage = null,
                 lastRefreshedTimestamp = now,
-                isFromCache = false
+                isFromCache = false,
+                statusMessage = "Live discovered models (${discovered.size} verified available)"
             )
+
+            onDiscoveryTimestampUpdated?.invoke(key, now)
             Result.success(discovered)
         } else {
             val error = result.exceptionOrNull()
             val errorMsg = error?.message ?: "Failed to discover models."
             val existingCache = cache[key]
+            val lastTimestamp = lastDiscoveryTimestamps[key]
 
             if (!existingCache.isNullOrEmpty()) {
                 stateFlow.value = stateFlow.value.copy(
                     isLoading = false,
                     models = existingCache,
                     errorMessage = "$errorMsg (Using last cached models)",
-                    isFromCache = true
+                    lastRefreshedTimestamp = lastTimestamp,
+                    isFromCache = true,
+                    statusMessage = "Cached models (Last live discovery failed)"
                 )
             } else {
                 stateFlow.value = stateFlow.value.copy(
                     isLoading = false,
+                    models = emptyList(),
                     errorMessage = errorMsg,
-                    isFromCache = false
+                    isFromCache = false,
+                    statusMessage = "Model availability not verified"
                 )
             }
             Result.failure(error ?: Exception(errorMsg))
@@ -107,47 +160,42 @@ class RealModelSelectionRepository(
         unavailableModel: String,
         availableModels: List<DiscoveredModel>
     ): DiscoveredModel? {
-        val clean = unavailableModel.trim().removePrefix("models/")
-        // If the requested model is already available in the list, use it
-        val match = availableModels.firstOrNull { it.id.equals(clean, ignoreCase = true) }
-        if (match != null) return match
+        val clean = ModelIdNormalizer.normalize(unavailableModel)
+        if (availableModels.isEmpty()) return null
 
-        // Determine if requested model was image generation
-        val isImageRequest = clean.contains("image") || clean.contains("banana")
+        // 1. Direct match check
+        val directMatch = availableModels.firstOrNull { it.id.equals(clean, ignoreCase = true) }
+        if (directMatch != null) return directMatch
 
-        val candidates = if (isImageRequest) {
-            availableModels.filter { it.isImageGeneration }
-        } else {
-            availableModels.filter { !it.isImageGeneration }
+        // 2. Identify required modality/capability
+        val isVideoRequest = clean.contains("video")
+        val isImageRequest = !isVideoRequest && (clean.contains("image") || clean.contains("banana"))
+
+        // 3. Filter discovered models strictly by capability and provider
+        val providerPool = availableModels.filter { it.providerType.equals(providerType, ignoreCase = true) }
+        val candidatePool = if (providerPool.isNotEmpty()) providerPool else availableModels
+
+        val candidates = when {
+            isVideoRequest -> candidatePool.filter { model ->
+                model.supportedGenerationMethods.any { it.contains("video", ignoreCase = true) }
+            }
+            isImageRequest -> candidatePool.filter { it.isImageGeneration }
+            else -> candidatePool.filter { model ->
+                !model.isImageGeneration && (model.supportedGenerationMethods.isEmpty() || model.supportedGenerationMethods.any { m ->
+                    m.contains("generateContent", ignoreCase = true) ||
+                    m.contains("chat", ignoreCase = true) ||
+                    m.contains("messages", ignoreCase = true) ||
+                    m.contains("completions", ignoreCase = true)
+                })
+            }
         }
 
-        if (candidates.isEmpty() && availableModels.isNotEmpty()) {
-            return availableModels.first()
+        // 4. Return null if no compatible discovered model exists (never invent a model ID)
+        if (candidates.isEmpty()) {
+            return null
         }
 
-        return when (providerType.uppercase()) {
-            "GEMINI" -> {
-                if (isImageRequest) {
-                    candidates.firstOrNull { it.id == "gemini-2.5-flash-image" }
-                        ?: candidates.firstOrNull()
-                } else {
-                    candidates.firstOrNull { it.id == "gemini-3.1-flash-lite-preview" }
-                        ?: candidates.firstOrNull { it.id == "gemini-flash-latest" }
-                        ?: candidates.firstOrNull { it.id == "gemini-3.5-flash" }
-                        ?: candidates.firstOrNull()
-                }
-            }
-            "OPENAI" -> {
-                candidates.firstOrNull { it.id == "gpt-4o-mini" }
-                    ?: candidates.firstOrNull { it.id == "gpt-4o" }
-                    ?: candidates.firstOrNull()
-            }
-            "ANTHROPIC" -> {
-                candidates.firstOrNull { it.id.contains("haiku") }
-                    ?: candidates.firstOrNull { it.id.contains("sonnet") }
-                    ?: candidates.firstOrNull()
-            }
-            else -> candidates.firstOrNull() ?: availableModels.firstOrNull()
-        }
+        // 5. Select the safest compatible discovered model (prefer live-verified, then first candidate)
+        return candidates.firstOrNull { it.isVerifiedLive } ?: candidates.first()
     }
 }

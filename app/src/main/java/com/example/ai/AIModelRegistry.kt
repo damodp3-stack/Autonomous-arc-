@@ -1,5 +1,10 @@
 package com.example.ai
 
+/**
+ * Legacy registry and catalog reference.
+ * Note: When a valid provider API key exists, live dynamic discovery
+ * via ModelSelectionRepository is always the source of truth.
+ */
 object AIModelRegistry {
     val GEMINI_MODELS = listOf(
         "gemini-3.1-flash-lite-preview",
@@ -48,32 +53,32 @@ object AIModelRegistry {
     }
 
     fun isProhibitedGeminiModel(model: String): Boolean {
-        val lower = model.trim().removePrefix("models/").lowercase()
-        return lower.startsWith("gemini-1.0") ||
-               lower.startsWith("gemini-1.5") ||
-               lower.startsWith("gemini-2.0") ||
-               lower == "gemini-pro"
+        val clean = ModelIdNormalizer.normalize(model).lowercase()
+        return clean.startsWith("gemini-1.0") ||
+               clean.startsWith("gemini-1.5") ||
+               clean.startsWith("gemini-2.0") ||
+               clean == "gemini-pro"
     }
 
     fun resolveModel(providerType: String, model: String): String {
-        val trimmed = model.trim().removePrefix("models/")
+        val clean = ModelIdNormalizer.normalize(model)
         if (providerType.equals("GEMINI", ignoreCase = true)) {
-            val lower = trimmed.lowercase()
+            val lower = clean.lowercase()
             return when {
                 lower in listOf("gemini-1.5-flash", "gemini-2.0-flash", "gemini-2.0-flash-exp", "gemini flash") -> "gemini-flash-latest"
                 lower in listOf("gemini-1.5-pro", "gemini-2.0-pro", "gemini-2.0-flash-thinking", "gemini pro") -> "gemini-3.1-pro-preview"
                 lower in listOf("gemini lite", "flash lite", "gemini-lite", "flash-lite") -> "gemini-3.1-flash-lite-preview"
                 lower.isBlank() -> getDefaultModel("GEMINI")
-                isProhibitedGeminiModel(trimmed) -> getDefaultModel("GEMINI")
-                else -> trimmed
+                isProhibitedGeminiModel(clean) -> getDefaultModel("GEMINI")
+                else -> clean
             }
         }
-        return trimmed.ifBlank { getDefaultModel(providerType) }
+        return clean.ifBlank { getDefaultModel(providerType) }
     }
 
     fun isValidModel(providerType: String, model: String): Boolean {
         if (model.isBlank()) return false
-        val clean = model.trim().removePrefix("models/")
+        val clean = ModelIdNormalizer.normalize(model)
         if (providerType.equals("GEMINI", ignoreCase = true) && isProhibitedGeminiModel(clean)) {
             return false
         }
@@ -82,7 +87,7 @@ object AIModelRegistry {
     }
 
     fun getModelDescription(model: String): String {
-        val clean = model.trim().removePrefix("models/")
+        val clean = ModelIdNormalizer.normalize(model)
         return when (clean) {
             "gemini-3.1-flash-lite-preview" -> "Gemini 3.1 Flash Lite: Ultra-fast, highly responsive preview model"
             "gemini-flash-latest" -> "Gemini Flash (Latest): Fast general intelligence & high performance"
@@ -90,6 +95,8 @@ object AIModelRegistry {
             "gemini-3.5-flash" -> "Gemini 3.5 Flash: Next-gen speed, reasoning, and context"
             "gemini-3.8-flash" -> "Gemini 3.8 Flash: High-efficiency frontier coding and reasoning"
             "gemini-3.1-pro-preview" -> "Gemini 3.1 Pro: Advanced reasoning, deep STEM and complex architecture"
+            "gemini-2.5-flash" -> "Gemini 2.5 Flash: Balanced multimodal foundation model"
+            "gemini-2.5-flash-image" -> "Gemini 2.5 Flash Image: Real-time image generation"
             "gpt-4o" -> "GPT-4o: OpenAI flagship multimodal model for high-precision coding"
             "gpt-4o-mini" -> "GPT-4o Mini: Fast, low-cost intelligence for quick edits"
             "gpt-4-turbo" -> "GPT-4 Turbo: High capability with 128k context"
@@ -99,7 +106,7 @@ object AIModelRegistry {
             "claude-3-5-sonnet-20240620" -> "Claude 3.5 Sonnet (v1): Strong coding performance"
             "claude-3-5-haiku-20241022" -> "Claude 3.5 Haiku: Blazing fast responsiveness with strong intelligence"
             "claude-3-opus-20240229" -> "Claude 3 Opus: Deep contextual understanding for large projects"
-            else -> "Configured model: $clean"
+            else -> AIModelCatalog.getModelDescription(clean) ?: "Configured model: $clean"
         }
     }
 }

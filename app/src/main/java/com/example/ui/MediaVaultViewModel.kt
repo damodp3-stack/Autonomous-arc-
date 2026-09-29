@@ -107,9 +107,14 @@ class MediaVaultViewModel(
             )
             if (result.isSuccess) {
                 val res = result.getOrNull()
-                _generationStatus.value = "Success: Image generated via ${res?.modelUsed ?: "AI"} and saved to Vault."
+                val isMock = res?.costOrUsage?.contains("Mock", ignoreCase = true) == true || res?.modelUsed?.startsWith("mock") == true
+                _generationStatus.value = if (isMock) {
+                    "[Mock/Test Mode] Mock image generated via ${res?.modelUsed} and saved to Vault."
+                } else {
+                    "Success: Image generated via ${res?.modelUsed ?: "AI"} and saved to Vault."
+                }
             } else {
-                _generationStatus.value = "Generation notice: ${result.exceptionOrNull()?.message}"
+                _generationStatus.value = "Generation failed: ${result.exceptionOrNull()?.message ?: "Unknown provider failure"}"
             }
             _isGeneratingMedia.value = false
         }

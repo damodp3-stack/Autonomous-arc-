@@ -225,6 +225,19 @@ fun StandaloneAIProviderSettingsDialog(
                                             modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                                         )
                                     }
+                                } else if (discoveredModels.isEmpty()) {
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f)
+                                    ) {
+                                        Text(
+                                            "UNVERIFIED",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onErrorContainer,
+                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                        )
+                                    }
                                 }
                             }
 
@@ -323,7 +336,12 @@ fun StandaloneAIProviderSettingsDialog(
                                 } else {
                                     availableModelIds.forEach { modelOption ->
                                         DropdownMenuItem(
-                                            text = { Text(modelOption) },
+                                            text = {
+                                                Column {
+                                                    Text(modelOption, fontWeight = FontWeight.SemiBold)
+                                                    Text("Unverified: Live discovery required", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                }
+                                            },
                                             onClick = {
                                                 when (selectedTab) {
                                                     "Gemini" -> geminiModel = modelOption

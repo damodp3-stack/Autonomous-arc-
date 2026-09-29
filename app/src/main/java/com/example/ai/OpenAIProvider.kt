@@ -7,8 +7,9 @@ import kotlinx.coroutines.withContext
 class OpenAIProvider(
     private val projectName: String,
     private val providedApiKey: String? = null,
-    val model: String = "gpt-4o"
+    model: String = "gpt-4o"
 ) : AIProvider {
+    val model: String = ModelIdNormalizer.normalize(model).ifBlank { "gpt-4o" }
     private var latestUsage: TokenUsage? = null
 
     override fun getLatestUsage(): TokenUsage? = latestUsage

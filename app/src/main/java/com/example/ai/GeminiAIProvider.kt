@@ -1,37 +1,20 @@
 package com.example.ai
 
-
-
 import com.example.BuildConfig
-
-
 import com.example.data.MessageEntity
-
 import com.squareup.moshi.JsonClass
-
 import com.squareup.moshi.Moshi
-
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
-
-
 import kotlinx.coroutines.Dispatchers
-
-
 import kotlinx.coroutines.withContext
-
 import okhttp3.OkHttpClient
-
 import retrofit2.Retrofit
-
 import retrofit2.converter.moshi.MoshiConverterFactory
-
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.Query
-
-
 import java.util.concurrent.TimeUnit
 
 // --- Common Data Classes ---
@@ -154,7 +137,7 @@ class GeminiAIProvider(
     model: String = "gemini-3.1-flash-lite-preview",
     private val apiService: GeminiApiService = GeminiRetrofitClient.service
 ) : AIProvider {
-    private val model: String = model.trim().removePrefix("models/").ifBlank { "gemini-3.1-flash-lite-preview" }
+    private val model: String = ModelIdNormalizer.normalize(model).ifBlank { "gemini-3.1-flash-lite-preview" }
     private var latestUsage: TokenUsage? = null
 
     override fun getLatestUsage(): TokenUsage? = latestUsage
@@ -217,9 +200,9 @@ class GeminiAIProvider(
                 if (e.code() == 401 || e.code() == 403) {
                     "Error: Gemini API authentication failed. Invalid or expired API key."
                 } else if (e.code() == 404) {
-                    "Error: Model '$model' was not found or is unsupported. Please select a supported model (e.g. gemini-3.1-flash-lite-preview or gemini-flash-latest)."
+                    "Error: Model '$model' was not found or is unsupported (HTTP 404). Please use live model discovery to select an active model."
                 } else if (e.code() == 429) {
-                    "Error: Gemini rate limit or quota exceeded. Please wait a moment or switch to gemini-3.1-flash-lite-preview."
+                    "Error: Gemini rate limit or quota exceeded. Please wait a moment or check your API limits."
                 } else if (e.code() == 503) {
                     "Error: Gemini is currently experiencing temporary high demand (HTTP 503). Please retry in a moment."
                 } else if (e.code() >= 500) {
@@ -355,8 +338,8 @@ class GeminiAIProvider(
             } catch (e: retrofit2.HttpException) {
                 val errorMsg = when (e.code()) {
                     401, 403 -> "Authentication failed. Invalid Gemini API key. Please check your key in Settings."
-                    404 -> "Model '$model' was not found or is unsupported. Please select a supported model (e.g. gemini-3.1-flash-lite-preview or gemini-flash-latest)."
-                    429 -> "Rate limit or quota exceeded for Gemini. Please wait a moment or switch to gemini-3.1-flash-lite-preview."
+                    404 -> "Model '$model' was not found or is unsupported (HTTP 404). Please use live model discovery to select an active model."
+                    429 -> "Rate limit or quota exceeded for Gemini. Please wait a moment or check your plan limits."
                     503 -> "Gemini is currently experiencing high demand (HTTP 503). Please retry in a moment."
                     in 500..599 -> "Gemini service temporarily unavailable (${e.code()})."
                     else -> "Unexpected API response from Gemini (${e.code()})."

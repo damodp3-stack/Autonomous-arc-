@@ -85,9 +85,8 @@ class GeminiMediaGenerationProvider(
             )
         }
 
-        val modelToUse = request.model?.trim()?.removePrefix("models/")
-            ?.ifBlank { null }
-            ?: "gemini-2.5-flash-image"
+        val rawModel = request.model?.ifBlank { null } ?: "gemini-2.5-flash-image"
+        val modelToUse = ModelIdNormalizer.normalize(rawModel)
 
         val generateRequest = GenerateContentRequest(
             contents = listOf(
@@ -196,7 +195,7 @@ class MockMediaGenerationProvider(
                     isAntiAlias = true
                     textAlign = Paint.Align.CENTER
                 }
-                canvas.drawText("Generated Asset", 200f, 130f, paint)
+                canvas.drawText("Generated Asset (Mock)", 200f, 130f, paint)
 
                 paint.apply {
                     color = Color.WHITE
@@ -224,7 +223,7 @@ class MockMediaGenerationProvider(
                 Result.success(
                     MediaGenerationResult(
                         mediaEntity = saveResult.getOrThrow(),
-                        costOrUsage = "Mock Free Generation",
+                        costOrUsage = "[Mock Mode] Offline Mock Generation",
                         modelUsed = "mock-image-v1"
                     )
                 )

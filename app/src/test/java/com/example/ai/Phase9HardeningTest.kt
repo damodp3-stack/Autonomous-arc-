@@ -398,4 +398,269 @@ class Phase9HardeningTest {
         val metaClient = metaDao.getMetadata("PROJECT", "p1")
         assertEquals(SyncStatus.SYNCED.name, metaClient?.syncStatus)
     }
+
+    // --- 6. MODEL ID NORMALIZATION TESTS ---
+
+    @Test
+    fun testModelIdNormalization() {
+        assertEquals("gemini-3.5-flash", ModelIdNormalizer.normalize("gemini-3.5-flash"))
+        assertEquals("gemini-3.5-flash", ModelIdNormalizer.normalize("models/gemini-3.5-flash"))
+        assertEquals("gemini-3.5-flash", ModelIdNormalizer.normalize("models/models/gemini-3.5-flash"))
+        assertEquals("gemini-flash-latest", ModelIdNormalizer.normalize("models/models/models/gemini-flash-latest"))
+        assertEquals("gemini-flash-latest", ModelIdNormalizer.normalize("  models/gemini-flash-latest  "))
+        assertEquals("gpt-4o", ModelIdNormalizer.normalize("  gpt-4o  "))
+    }
+
+    // --- 7. DYNAMIC DISCOVERY ERROR & SAFETY TESTS ---
+
+    @Test
+    fun testFirstDiscoveryFailureNeverPretendsStaticCatalogIsLive() = runBlocking {
+        val repo = RealModelSelectionRepository(
+            providers = mapOf(
+                "GEMINI" to object : ModelDiscoveryProvider {
+                    override val providerType = "GEMINI"
+                    override suspend fun discoverModels(apiKey: String): Result<List<DiscoveredModel>> {
+                        return Result.failure(Exception("HTTP 500: Internal server error"))
+                    }
+                }
+            )
+        )
+
+        val result = repo.refreshModels("GEMINI", "any-key")
+        assertTrue(result.isFailure)
+
+        val state = repo.getModelsState("GEMINI").value
+        assertTrue(state.models.isEmpty())
+        assertFalse(state.isFromCache)
+        assertEquals("Model availability not verified", state.statusMessage)
+        assertTrue(state.errorMessage?.contains("500") == true)
+
+        val cached = repo.getCachedModels("GEMINI")
+        assertTrue(cached.isEmpty())
+    }
+
+    @Test
+    fun testFallbackStrictCapabilityIsolation() {
+        val repo = RealModelSelectionRepository()
+
+        // 1. Text-only discovered models
+        val textOnlyModels = listOf(
+            DiscoveredModel(id = "model-text-a", displayName = "Text A", isImageGeneration = false, providerType = "GEMINI"),
+            DiscoveredModel(id = "model-text-b", displayName = "Text B", isImageGeneration = false, providerType = "GEMINI")
+        )
+
+        // Requesting an image model when only text models are discovered MUST return null (fail safely)
+        val imageFallback = repo.getCompatibleFallback("GEMINI", "gemini-flash-image", textOnlyModels)
+        assertNull(imageFallback)
+
+        // 2. Image-only discovered models
+        val imageOnlyModels = listOf(
+            DiscoveredModel(id = "model-image-a", displayName = "Image A", isImageGeneration = true, providerType = "GEMINI")
+        )
+
+        // Requesting a text/coding model when only image models are discovered MUST return null (fail safely)
+        val textFallback = repo.getCompatibleFallback("GEMINI", "gemini-flash-latest", imageOnlyModels)
+        assertNull(textFallback)
+    }
+
+    @Test
+    fun testGeminiDiscoveryHttpErrorCodes() = runBlocking {
+        fun makeErrorService(code: Int, message: String): GeminiApiService {
+            val response = Response.error<GeminiListModelsResponse>(
+                code,
+                "{\"error\":{\"code\":$code,\"message\":\"$message\"}}".toResponseBody("application/json".toMediaType())
+            )
+            return FakeGeminiApiService(listModelsException = HttpException(response))
+        }
+
+        val p401 = GeminiModelDiscoveryProvider(makeErrorService(401, "API_KEY_INVALID"))
+        val r401 = p401.discoverModels("bad-key")
+        assertTrue(r401.isFailure)
+        assertTrue(r401.exceptionOrNull()?.message?.contains("Authentication failed") == true)
+
+        val p403 = GeminiModelDiscoveryProvider(makeErrorService(403, "PERMISSION_DENIED"))
+        val r403 = p403.discoverModels("forbidden-key")
+        assertTrue(r403.isFailure)
+        assertTrue(r403.exceptionOrNull()?.message?.contains("Authentication failed") == true)
+
+        val p404 = GeminiModelDiscoveryProvider(makeErrorService(404, "NOT_FOUND"))
+        val r404 = p404.discoverModels("key")
+        assertTrue(r404.isFailure)
+        assertTrue(r404.exceptionOrNull()?.message?.contains("404 Not Found") == true)
+
+        val p429 = GeminiModelDiscoveryProvider(makeErrorService(429, "RESOURCE_EXHAUSTED"))
+        val r429 = p429.discoverModels("key")
+        assertTrue(r429.isFailure)
+        assertTrue(r429.exceptionOrNull()?.message?.contains("rate limit or quota") == true)
+
+        val p503 = GeminiModelDiscoveryProvider(makeErrorService(503, "UNAVAILABLE"))
+        val r503 = p503.discoverModels("key")
+        assertTrue(r503.isFailure)
+        assertTrue(r503.exceptionOrNull()?.message?.contains("temporarily unavailable") == true)
+
+        val p500 = GeminiModelDiscoveryProvider(makeErrorService(500, "INTERNAL"))
+        val r500 = p500.discoverModels("key")
+        assertTrue(r500.isFailure)
+        assertTrue(r500.exceptionOrNull()?.message?.contains("server error") == true)
+    }
+
+    @Test
+    fun testGeminiDiscoveryEmptyAndMalformedModels() = runBlocking {
+        // Empty response
+        val emptyService = FakeGeminiApiService(listModelsResponse = GeminiListModelsResponse(models = emptyList()))
+        val providerEmpty = GeminiModelDiscoveryProvider(emptyService)
+        val rEmpty = providerEmpty.discoverModels("valid-key")
+        assertTrue(rEmpty.isSuccess)
+        assertTrue(rEmpty.getOrNull()!!.isEmpty())
+
+        // Models with missing generateContent method
+        val nonContentModels = listOf(
+            GeminiModelDto(name = "models/model-embed", supportedGenerationMethods = listOf("embedContent")),
+            GeminiModelDto(name = "models/model-count", supportedGenerationMethods = listOf("countTokens"))
+        )
+        val filterService = FakeGeminiApiService(listModelsResponse = GeminiListModelsResponse(models = nonContentModels))
+        val providerFiltered = GeminiModelDiscoveryProvider(filterService)
+        val rFiltered = providerFiltered.discoverModels("valid-key")
+        assertTrue(rFiltered.isSuccess)
+        assertTrue(rFiltered.getOrNull()!!.isEmpty())
+    }
+
+    @Test
+    fun testGeminiConnectionDiagnosticMeaningfulMessages() = runBlocking {
+        val keyManager = object : APIKeyManager {
+            override fun getApiKey(providerId: String) = "valid-key"
+            override fun saveApiKey(providerId: String, apiKey: String) {}
+            override fun clearApiKey(providerId: String) {}
+            override fun hasApiKey(providerId: String) = true
+        }
+
+        // Test 404 does NOT blame API key
+        val notFoundResponse = Response.error<GenerateContentResponse>(
+            404,
+            "{\"error\":{\"code\":404,\"message\":\"Model not found\"}}".toResponseBody("application/json".toMediaType())
+        )
+        val apiService404 = FakeGeminiApiService(generateContentException = HttpException(notFoundResponse))
+        val provider404 = GeminiAIProvider("TestProj", "valid-key", "obsolete-model", apiService = apiService404)
+        val res404 = provider404.generateResponse("hi", emptyList(), null)
+        assertTrue(res404.contains("not found or is unsupported"))
+        assertFalse(res404.contains("Invalid or expired API key"))
+
+        // Test 401 DOES blame authentication
+        val unauthResponse = Response.error<GenerateContentResponse>(
+            401,
+            "{\"error\":{\"code\":401,\"message\":\"API_KEY_INVALID\"}}".toResponseBody("application/json".toMediaType())
+        )
+        val apiService401 = FakeGeminiApiService(generateContentException = HttpException(unauthResponse))
+        val provider401 = GeminiAIProvider("TestProj", "bad-key", "gemini-3.5-flash", apiService = apiService401)
+        val res401 = provider401.generateResponse("hi", emptyList(), null)
+        assertTrue(res401.contains("authentication failed") || res401.contains("Invalid or expired API key"))
+    }
+
+    private class FakeAIProviderConfigDao : AIProviderConfigDao {
+        val configs = mutableMapOf<String, AIProviderConfigEntity>()
+        override fun getAllConfigs(): Flow<List<AIProviderConfigEntity>> = flowOf(configs.values.toList())
+        override fun getActiveConfig(): Flow<AIProviderConfigEntity?> = flowOf(configs.values.firstOrNull { it.isActive })
+        override suspend fun getConfigById(id: String) = configs[id]
+        override suspend fun getConfigByProviderType(providerType: String) =
+            configs.values.firstOrNull { it.providerType.equals(providerType, ignoreCase = true) }
+        override suspend fun insertConfig(config: AIProviderConfigEntity) { configs[config.id] = config }
+        override suspend fun updateConfig(config: AIProviderConfigEntity) { configs[config.id] = config }
+        override suspend fun deleteConfig(id: String) { configs.remove(id) }
+        override suspend fun deactivateAll() {
+            configs.replaceAll { _, v -> v.copy(isActive = false) }
+        }
+        override suspend fun setActive(id: String) {
+            configs[id]?.let { configs[id] = it.copy(isActive = true) }
+        }
+        override suspend fun setActiveByProviderType(providerType: String) {
+            val found = configs.values.firstOrNull { it.providerType.equals(providerType, ignoreCase = true) }
+            if (found != null) {
+                configs[found.id] = found.copy(isActive = true)
+            }
+        }
+    }
+
+    // --- 8. DIAGNOSTIC ERROR CODE CLASSIFICATION TESTS ---
+
+    @Test
+    fun testDiagnosticErrorCodeClassification() {
+        val dummyRepo = AIProviderConfigRepository(FakeAIProviderConfigDao())
+        val dummyKeyManager = object : APIKeyManager {
+            override fun getApiKey(providerId: String) = "key"
+            override fun saveApiKey(providerId: String, apiKey: String) {}
+            override fun clearApiKey(providerId: String) {}
+            override fun hasApiKey(providerId: String) = true
+        }
+        val factory = AIFactory(dummyRepo, dummyKeyManager)
+
+        assertEquals(DiagnosticErrorCode.AUTHENTICATION_FAILED, factory.classifyHttpError(401))
+        assertEquals(DiagnosticErrorCode.FORBIDDEN, factory.classifyHttpError(403))
+        assertEquals(DiagnosticErrorCode.MODEL_NOT_FOUND, factory.classifyHttpError(404))
+        assertEquals(DiagnosticErrorCode.QUOTA_EXCEEDED, factory.classifyHttpError(429, "{\"error\": \"RESOURCE_EXHAUSTED: quota exceeded\"}"))
+        assertEquals(DiagnosticErrorCode.RATE_LIMITED, factory.classifyHttpError(429, "{\"error\": \"Too many requests\"}"))
+        assertEquals(DiagnosticErrorCode.SERVER_ERROR, factory.classifyHttpError(500))
+        assertEquals(DiagnosticErrorCode.SERVER_ERROR, factory.classifyHttpError(503))
+        assertEquals(DiagnosticErrorCode.UNKNOWN_ERROR, factory.classifyHttpError(418))
+    }
+
+    // --- 9. NO-KEY DISCOVERY & SECURITY TESTS ---
+
+    @Test
+    fun testDiscoveryWithoutApiKeyRequiresConfiguration() = runBlocking {
+        val repo = RealModelSelectionRepository()
+        val result = repo.refreshModels("GEMINI", "   ")
+        assertTrue(result.isFailure)
+        val state = repo.getModelsState("GEMINI").value
+        assertTrue(state.models.isEmpty())
+        assertTrue(state.errorMessage?.contains("API key required") == true)
+        assertEquals("API key required — model availability not verified.", state.statusMessage)
+    }
+
+    @Test
+    fun testGeminiMediaGenerationQuotaFailurePreservedAndNoEntityCreated() = runBlocking {
+        val dao = FakeMediaDao()
+        val repo = FakeMediaRepo(dao)
+        val quotaErrorResponse = Response.error<GenerateContentResponse>(
+            429,
+            "{\"error\":{\"code\":429,\"message\":\"RESOURCE_EXHAUSTED\"}}".toResponseBody("application/json".toMediaType())
+        )
+        val fakeService = FakeGeminiApiService(generateContentException = HttpException(quotaErrorResponse))
+        val keyManager = object : APIKeyManager {
+            override fun getApiKey(providerId: String) = "valid-test-key-12345"
+            override fun saveApiKey(providerId: String, apiKey: String) {}
+            override fun clearApiKey(providerId: String) {}
+            override fun hasApiKey(providerId: String) = true
+        }
+
+        val provider = GeminiMediaGenerationProvider(repo, keyManager, apiService = fakeService)
+        val result = provider.generateMedia(
+            MediaGenerationRequest(
+                prompt = "A high-tech digital painting",
+                capability = MediaCapability.TEXT_TO_IMAGE,
+                model = "gemini-2.5-flash-image"
+            )
+        )
+
+        assertTrue(result.isFailure)
+        val ex = result.exceptionOrNull()
+        assertTrue(ex?.message?.contains("Quota limit reached for image generation (HTTP 429)") == true)
+        // Verify no MediaEntity was created or saved in the database
+        assertEquals(0, dao.getMediaCount())
+    }
+
+    @Test
+    fun testSecurityNoApiKeyLeakageInErrors() = runBlocking {
+        val secretKey = "AIzaSySecretTestKey9876543210"
+        val errorResponse = Response.error<GenerateContentResponse>(
+            401,
+            "{\"error\":{\"code\":401,\"message\":\"Invalid API key provided\"}}".toResponseBody("application/json".toMediaType())
+        )
+        val fakeService = FakeGeminiApiService(generateContentException = HttpException(errorResponse))
+        val provider = GeminiAIProvider("SecretTestProj", secretKey, "gemini-3.5-flash", apiService = fakeService)
+        val response = provider.generateResponse("test", emptyList(), null)
+
+        // The error output must never reveal the secret API key value
+        assertFalse("Error message must not leak API key", response.contains(secretKey))
+        assertTrue(response.contains("Invalid or expired API key") || response.contains("authentication failed"))
+    }
 }

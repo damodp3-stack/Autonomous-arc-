@@ -105,17 +105,22 @@ class WorkspaceViewModel(
 
     fun setProvider(providerName: String) {
         _selectedProvider.value = providerName
-        _availableModels.value = com.example.ai.AIModelRegistry.getAvailableModels(providerName)
+        val cached = aiFactory.modelSelectionRepository.getCachedModels(providerName)
+        _availableModels.value = if (cached.isNotEmpty()) cached.map { it.id } else emptyList()
         viewModelScope.launch {
             val savedModel = configRepository?.getConfigByProviderType(providerName)?.selectedModel
-            val newModel = savedModel?.ifBlank { null } ?: com.example.ai.AIModelRegistry.getDefaultModel(providerName)
+            val newModel = savedModel?.ifBlank { null }
+                ?: cached.firstOrNull { it.isVerifiedLive }?.id
+                ?: cached.firstOrNull()?.id
+                ?: com.example.ai.AIModelRegistry.getDefaultModel(providerName)
             _selectedModel.value = newModel
             configRepository?.setActiveProviderType(providerName)
         }
     }
 
     fun setModel(modelName: String) {
-        val resolved = com.example.ai.AIModelRegistry.resolveModel(_selectedProvider.value, modelName)
+        val normalized = com.example.ai.ModelIdNormalizer.normalize(modelName)
+        val resolved = com.example.ai.AIModelRegistry.resolveModel(_selectedProvider.value, normalized)
         _selectedModel.value = resolved
         viewModelScope.launch {
             configRepository?.updateModelForProvider(_selectedProvider.value, resolved)
@@ -123,7 +128,8 @@ class WorkspaceViewModel(
     }
 
     fun saveProviderSettings(providerType: String, apiKey: String, model: String) {
-        val resolvedModel = com.example.ai.AIModelRegistry.resolveModel(providerType, model)
+        val normalized = com.example.ai.ModelIdNormalizer.normalize(model)
+        val resolvedModel = com.example.ai.AIModelRegistry.resolveModel(providerType, normalized)
         apiKeyManager.saveApiKey(providerType, apiKey.trim())
         viewModelScope.launch {
             configRepository?.updateModelForProvider(providerType, resolvedModel)
@@ -330,7 +336,13 @@ class WorkspaceViewModel(
                 val errorMsg = e.message ?: "Unknown error"
                 val is404ModelError = errorMsg.contains("404") || errorMsg.contains("not found", ignoreCase = true) || errorMsg.contains("unsupported", ignoreCase = true)
                 if (is404ModelError) {
-                    val available = aiFactory.modelSelectionRepository.getCachedModels(_selectedProvider.value)
+                    val cached = aiFactory.modelSelectionRepository.getCachedModels(_selectedProvider.value)
+                    val available = if (cached.isEmpty()) {
+                        val key = apiKeyManager.getApiKey(_selectedProvider.value).orEmpty()
+                        if (key.isNotBlank()) {
+                            aiFactory.modelSelectionRepository.refreshModels(_selectedProvider.value, key).getOrNull().orEmpty()
+                        } else emptyList()
+                    } else cached
                     val fallback = aiFactory.modelSelectionRepository.getCompatibleFallback(_selectedProvider.value, _selectedModel.value, available)
                     if (fallback != null && fallback.id != _selectedModel.value) {
                         val oldModel = _selectedModel.value
@@ -339,6 +351,12 @@ class WorkspaceViewModel(
                         messageRepository.insert(MessageEntity(
                             projectId = projectId,
                             text = "Model Fallback: Selected model '$oldModel' was unavailable on the API (HTTP 404). Automatically switched to compatible live model '${fallback.id}'.",
+                            isUser = false
+                        ))
+                    } else if (fallback == null) {
+                        messageRepository.insert(MessageEntity(
+                            projectId = projectId,
+                            text = "Model Unavailable: Selected model '${_selectedModel.value}' was rejected by the API (HTTP 404), and no compatible alternative is currently discovered. Please refresh models in Settings.",
                             isUser = false
                         ))
                     }
@@ -400,7 +418,13 @@ class WorkspaceViewModel(
                 val errorMsg = e.message ?: "An unknown error occurred"
                 val is404ModelError = errorMsg.contains("404") || errorMsg.contains("not found", ignoreCase = true) || errorMsg.contains("unsupported", ignoreCase = true)
                 if (is404ModelError) {
-                    val available = aiFactory.modelSelectionRepository.getCachedModels(_selectedProvider.value)
+                    val cached = aiFactory.modelSelectionRepository.getCachedModels(_selectedProvider.value)
+                    val available = if (cached.isEmpty()) {
+                        val key = apiKeyManager.getApiKey(_selectedProvider.value).orEmpty()
+                        if (key.isNotBlank()) {
+                            aiFactory.modelSelectionRepository.refreshModels(_selectedProvider.value, key).getOrNull().orEmpty()
+                        } else emptyList()
+                    } else cached
                     val fallback = aiFactory.modelSelectionRepository.getCompatibleFallback(_selectedProvider.value, _selectedModel.value, available)
                     if (fallback != null && fallback.id != _selectedModel.value) {
                         val oldModel = _selectedModel.value
@@ -409,6 +433,12 @@ class WorkspaceViewModel(
                         messageRepository.insert(MessageEntity(
                             projectId = projectId,
                             text = "Model Fallback: Selected model '$oldModel' was unavailable on the API (HTTP 404). Automatically switched to compatible live model '${fallback.id}'.",
+                            isUser = false
+                        ))
+                    } else if (fallback == null) {
+                        messageRepository.insert(MessageEntity(
+                            projectId = projectId,
+                            text = "Model Unavailable: Selected model '${_selectedModel.value}' was rejected by the API (HTTP 404), and no compatible alternative is currently discovered. Please refresh models in Settings.",
                             isUser = false
                         ))
                     }

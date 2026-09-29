@@ -15,5 +15,6 @@ data class DiscoveredModel(
     val inputTokenLimit: Int? = null,
     val outputTokenLimit: Int? = null,
     val providerType: String = "GEMINI",
-    val isAvailable: Boolean = true
+    val isAvailable: Boolean = true,
+    val isVerifiedLive: Boolean = true
 )

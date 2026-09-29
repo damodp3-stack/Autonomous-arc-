@@ -290,14 +290,35 @@ fun AIProviderSettingsDialog(
                         Text(hint, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
 
-                    // Model Selection
+                    // Model Selection — Dynamic Live Discovery Source of Truth
                     val discoveryState by viewModel.aiFactory.modelSelectionRepository.getModelsState(selectedTab).collectAsStateWithLifecycle()
                     val discoveredModels = discoveryState.models
-                    val availableModelIds = if (discoveredModels.isNotEmpty()) discoveredModels.map { it.id } else AIModelRegistry.getAvailableModels(selectedTab)
+                    val hasApiKey = currentKey.isNotBlank()
+                    val hasDiscovered = discoveredModels.isNotEmpty()
+                    val isCached = discoveryState.isFromCache
+                    val discoveryError = discoveryState.errorMessage
+                    val lastRefreshTime = discoveryState.lastRefreshedTimestamp
 
                     LaunchedEffect(selectedTab, currentKey) {
-                        if (currentKey.isNotBlank() && discoveryState.lastRefreshedTimestamp == null && !discoveryState.isLoading) {
+                        if (hasApiKey && discoveryState.lastRefreshedTimestamp == null && !discoveryState.isLoading) {
                             viewModel.refreshModelsForProvider(selectedTab, currentKey)
+                        }
+                    }
+
+                    val resolvedCurrentModel = if (hasDiscovered) {
+                        if (discoveredModels.any { it.id.equals(currentModel, ignoreCase = true) }) {
+                            discoveredModels.first { it.id.equals(currentModel, ignoreCase = true) }.id
+                        } else {
+                            val fallback = viewModel.aiFactory.modelSelectionRepository.getCompatibleFallback(selectedTab, currentModel, discoveredModels)
+                            fallback?.id ?: discoveredModels.first().id
+                        }
+                    } else {
+                        currentModel
+                    }
+
+                    LaunchedEffect(selectedTab, currentModel, hasDiscovered) {
+                        if (hasDiscovered && resolvedCurrentModel != currentModel) {
+                            onModelChange(resolvedCurrentModel)
                         }
                     }
 
@@ -309,24 +330,65 @@ fun AIProviderSettingsDialog(
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text("Model Selection", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
-                                if (discoveryState.isFromCache) {
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Surface(
-                                        shape = RoundedCornerShape(4.dp),
-                                        color = MaterialTheme.colorScheme.surfaceVariant
-                                    ) {
-                                        Text(
-                                            "CACHED",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                                        )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                when {
+                                    !hasApiKey -> {
+                                        Surface(
+                                            shape = RoundedCornerShape(4.dp),
+                                            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f)
+                                        ) {
+                                            Text(
+                                                "CONFIG REQUIRED",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                            )
+                                        }
+                                    }
+                                    hasDiscovered && !isCached -> {
+                                        Surface(
+                                            shape = RoundedCornerShape(4.dp),
+                                            color = MaterialTheme.colorScheme.primaryContainer
+                                        ) {
+                                            Text(
+                                                "VERIFIED LIVE",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                            )
+                                        }
+                                    }
+                                    hasDiscovered && isCached -> {
+                                        Surface(
+                                            shape = RoundedCornerShape(4.dp),
+                                            color = MaterialTheme.colorScheme.surfaceVariant
+                                        ) {
+                                            Text(
+                                                "CACHED",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                            )
+                                        }
+                                    }
+                                    else -> {
+                                        Surface(
+                                            shape = RoundedCornerShape(4.dp),
+                                            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f)
+                                        ) {
+                                            Text(
+                                                "UNVERIFIED",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                            )
+                                        }
                                     }
                                 }
                             }
                             IconButton(
                                 onClick = { viewModel.refreshModelsForProvider(selectedTab, currentKey) },
-                                enabled = !discoveryState.isLoading && currentKey.isNotBlank(),
+                                enabled = !discoveryState.isLoading && hasApiKey,
                                 modifier = Modifier.size(32.dp)
                             ) {
                                 if (discoveryState.isLoading) {
@@ -337,33 +399,103 @@ fun AIProviderSettingsDialog(
                             }
                         }
 
-                        if (discoveryState.errorMessage != null) {
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(
-                                    text = discoveryState.errorMessage!!,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onErrorContainer,
-                                    modifier = Modifier.padding(8.dp)
-                                )
+                        // State banner according to requirements
+                        when {
+                            !hasApiKey -> {
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(modifier = Modifier.padding(8.dp)) {
+                                        Text(
+                                            "Configuration required — No verified live models",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Text(
+                                            "Enter an API key above to discover models currently verified on your provider account.",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+                            hasDiscovered && isCached -> {
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(modifier = Modifier.padding(8.dp)) {
+                                        val timeStr = lastRefreshTime?.let {
+                                            java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date(it))
+                                        } ?: "previous session"
+                                        Text(
+                                            "Cached models (${discoveredModels.size} available) • Last refreshed: $timeStr",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        if (!discoveryError.isNullOrBlank()) {
+                                            Spacer(modifier = Modifier.height(2.dp))
+                                            Text(
+                                                "Current refresh issue: $discoveryError",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.error
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            hasDiscovered && !isCached -> {
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(
+                                        text = "Live verified models (${discoveredModels.size} available from $selectedTab API)",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        modifier = Modifier.padding(8.dp)
+                                    )
+                                }
+                            }
+                            else -> {
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Text(
+                                            "Unable to verify models",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onErrorContainer
+                                        )
+                                        Text(
+                                            discoveryError ?: "Model discovery did not succeed. Check your API key or network connection.",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onErrorContainer
+                                        )
+                                        OutlinedButton(
+                                            onClick = { viewModel.refreshModelsForProvider(selectedTab, currentKey) },
+                                            modifier = Modifier.height(32.dp),
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                        ) {
+                                            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(14.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Retry / Refresh Models", style = MaterialTheme.typography.labelSmall)
+                                        }
+                                    }
+                                }
                             }
                         }
 
-                        val resolvedCurrentModel = if (availableModelIds.contains(currentModel)) {
-                            currentModel
-                        } else {
-                            val fallback = viewModel.aiFactory.modelSelectionRepository.getCompatibleFallback(selectedTab, currentModel, discoveredModels)
-                            fallback?.id ?: AIModelRegistry.resolveModel(selectedTab, currentModel)
-                        }
-
-                        LaunchedEffect(selectedTab, currentModel, availableModelIds) {
-                            if (resolvedCurrentModel != currentModel) {
-                                onModelChange(resolvedCurrentModel)
-                            }
-                        }
                         var modelDropdownExpanded by remember { mutableStateOf(false) }
 
                         Box(modifier = Modifier.fillMaxWidth()) {
@@ -377,12 +509,22 @@ fun AIProviderSettingsDialog(
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text(resolvedCurrentModel, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                                        Text(
+                                            if (hasDiscovered) resolvedCurrentModel else "$currentModel (Unverified)",
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            fontWeight = FontWeight.Bold
+                                        )
                                         Text("▼", style = MaterialTheme.typography.labelSmall)
                                     }
                                     Spacer(modifier = Modifier.height(2.dp))
-                                    val desc = discoveredModels.firstOrNull { it.id == resolvedCurrentModel }?.description
-                                        ?: AIModelRegistry.getModelDescription(resolvedCurrentModel)
+                                    val desc = if (hasDiscovered) {
+                                        discoveredModels.firstOrNull { it.id == resolvedCurrentModel }?.description
+                                            ?: com.example.ai.AIModelCatalog.getModelDescription(resolvedCurrentModel)
+                                            ?: "Live discovered model"
+                                    } else {
+                                        if (!hasApiKey) "Configuration required — API key needed to discover live models"
+                                        else "Model availability not verified — discovery failed or pending"
+                                    }
                                     Text(
                                         desc,
                                         style = MaterialTheme.typography.bodySmall,
@@ -396,13 +538,13 @@ fun AIProviderSettingsDialog(
                                 onDismissRequest = { modelDropdownExpanded = false },
                                 modifier = Modifier.fillMaxWidth(0.85f)
                             ) {
-                                if (discoveredModels.isNotEmpty()) {
+                                if (hasDiscovered) {
                                     discoveredModels.forEach { modelItem ->
                                         DropdownMenuItem(
                                             text = {
                                                 Column {
                                                     Row(verticalAlignment = Alignment.CenterVertically) {
-                                                        if (currentModel == modelItem.id) {
+                                                        if (resolvedCurrentModel == modelItem.id) {
                                                             Text("✓ ", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                                                         }
                                                         Text(modelItem.displayName, fontWeight = FontWeight.SemiBold)
@@ -422,7 +564,7 @@ fun AIProviderSettingsDialog(
                                                         }
                                                     }
                                                     Text(
-                                                        "ID: ${modelItem.id}",
+                                                        "ID: ${modelItem.id}${if (isCached) " (Cached)" else " (Live Verified)"}",
                                                         style = MaterialTheme.typography.labelSmall,
                                                         color = MaterialTheme.colorScheme.primary
                                                     )
@@ -442,28 +584,79 @@ fun AIProviderSettingsDialog(
                                         )
                                     }
                                 } else {
-                                    availableModelIds.forEach { model ->
-                                        DropdownMenuItem(
-                                            text = {
-                                                Column {
-                                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                                        if (currentModel == model) {
-                                                            Text("✓ ", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                                                        }
-                                                        Text(model, fontWeight = FontWeight.SemiBold)
-                                                    }
-                                                    Text(
-                                                        AIModelRegistry.getModelDescription(model),
-                                                        style = MaterialTheme.typography.labelSmall,
-                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                    )
-                                                }
-                                            },
-                                            onClick = {
-                                                onModelChange(model)
-                                                modelDropdownExpanded = false
+                                    // When discovery hasn't succeeded, DO NOT populate static models as available
+                                    DropdownMenuItem(
+                                        text = {
+                                            Column(modifier = Modifier.padding(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                Text(
+                                                    if (!hasApiKey) "Configuration Required" else "Unable to Verify Models",
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = MaterialTheme.colorScheme.error
+                                                )
+                                                Text(
+                                                    if (!hasApiKey) "Configure an API key and refresh to verify available live models."
+                                                    else "Discovery did not succeed. Live models cannot be verified at this time.",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
                                             }
+                                        },
+                                        onClick = {
+                                            modelDropdownExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+
+                        // Informational Offline Metadata Section (clearly separated from live models)
+                        var showStaticCatalogInfo by remember { mutableStateOf(false) }
+                        Column {
+                            TextButton(
+                                onClick = { showStaticCatalogInfo = !showStaticCatalogInfo },
+                                contentPadding = PaddingValues(0.dp)
+                            ) {
+                                Text(
+                                    if (showStaticCatalogInfo) "▼ Hide Offline Catalog Reference" else "▶ Show Offline Catalog Reference (Informational Only)",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            if (showStaticCatalogInfo) {
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Text(
+                                            "Offline Documentation Metadata Only",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
+                                        Text(
+                                            "The models below are reference entries from provider documentation. They are not authoritative and will not be treated as available without successful live discovery.",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        val staticEntries = com.example.ai.AIModelCatalog.getCatalogForProvider(selectedTab)
+                                        staticEntries.forEach { entry ->
+                                            Column(modifier = Modifier.padding(vertical = 2.dp)) {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Text(entry.displayName, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                    Surface(
+                                                        shape = RoundedCornerShape(3.dp),
+                                                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                                                    ) {
+                                                        Text("OFFLINE METADATA", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp))
+                                                    }
+                                                }
+                                                Text("ID: ${entry.id} • ${entry.description}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            }
+                                        }
                                     }
                                 }
                             }

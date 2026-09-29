@@ -34,7 +34,7 @@ class GeminiModelDiscoveryProvider(
 
                 for (dto in rawModels) {
                     val rawName = dto.name
-                    val cleanId = rawName.removePrefix("models/").trim()
+                    val cleanId = ModelIdNormalizer.normalize(rawName)
                     val methods = dto.supportedGenerationMethods.orEmpty()
 
                     // Rule 1: Exclude strictly prohibited / deprecated models
@@ -67,7 +67,8 @@ class GeminiModelDiscoveryProvider(
                             inputTokenLimit = dto.inputTokenLimit,
                             outputTokenLimit = dto.outputTokenLimit,
                             providerType = "GEMINI",
-                            isAvailable = true
+                            isAvailable = true,
+                            isVerifiedLive = true
                         )
                     )
                 }
@@ -79,7 +80,6 @@ class GeminiModelDiscoveryProvider(
             // Prioritize standard coding/text models first
             val sorted = allDiscovered.sortedWith(
                 compareBy<DiscoveredModel> {
-                    // Flash lite and flash latest first, then pro, then image, then others
                     when {
                         it.id == "gemini-3.1-flash-lite-preview" -> 0
                         it.id == "gemini-flash-latest" -> 1
@@ -128,7 +128,7 @@ class OpenAIModelDiscoveryProvider(
             val rawList = response.data.orEmpty()
 
             val relevant = rawList
-                .map { it.id.trim() }
+                .map { ModelIdNormalizer.normalize(it.id) }
                 .filter { id ->
                     val lower = id.lowercase()
                     (lower.startsWith("gpt-4") || lower.startsWith("gpt-3.5") || lower.startsWith("o1") || lower.startsWith("o3")) &&
@@ -139,11 +139,12 @@ class OpenAIModelDiscoveryProvider(
                     DiscoveredModel(
                         id = id,
                         displayName = id,
-                        description = AIModelRegistry.getModelDescription(id),
+                        description = AIModelCatalog.getModelDescription(id) ?: AIModelRegistry.getModelDescription(id),
                         supportedGenerationMethods = listOf("chat.completions"),
                         isImageGeneration = id.lowercase().contains("dall-e"),
                         providerType = "OPENAI",
-                        isAvailable = true
+                        isAvailable = true,
+                        isVerifiedLive = true
                     )
                 }
                 .sortedWith(
@@ -163,6 +164,7 @@ class OpenAIModelDiscoveryProvider(
         } catch (e: retrofit2.HttpException) {
             val friendlyMsg = when (e.code()) {
                 401, 403 -> "Authentication failed: Invalid OpenAI API key."
+                404 -> "OpenAI models endpoint returned 404 Not Found."
                 429 -> "OpenAI quota or rate limit exceeded."
                 in 500..599 -> "OpenAI server error (${e.code()})."
                 else -> "OpenAI API error (${e.code()}): ${e.message()}"
@@ -190,51 +192,28 @@ class AnthropicModelDiscoveryProvider(
             val models = response.data.orEmpty()
                 .filter { it.id.isNotBlank() }
                 .map { dto ->
+                    val cleanId = ModelIdNormalizer.normalize(dto.id)
                     DiscoveredModel(
-                        id = dto.id,
-                        displayName = dto.displayName ?: dto.id,
-                        description = AIModelRegistry.getModelDescription(dto.id),
+                        id = cleanId,
+                        displayName = dto.displayName ?: cleanId,
+                        description = AIModelCatalog.getModelDescription(cleanId) ?: AIModelRegistry.getModelDescription(cleanId),
                         supportedGenerationMethods = listOf("messages"),
                         isImageGeneration = false,
                         providerType = "ANTHROPIC",
-                        isAvailable = true
+                        isAvailable = true,
+                        isVerifiedLive = true
                     )
                 }
-            if (models.isNotEmpty()) {
-                Result.success(models)
-            } else {
-                // Return curated active models if API returned empty list
-                Result.success(AIModelRegistry.ANTHROPIC_MODELS.map { id ->
-                    DiscoveredModel(
-                        id = id,
-                        displayName = id,
-                        description = AIModelRegistry.getModelDescription(id),
-                        providerType = "ANTHROPIC",
-                        isAvailable = true
-                    )
-                })
-            }
+            Result.success(models)
         } catch (e: retrofit2.HttpException) {
-            if (e.code() == 404 || e.code() == 400) {
-                // If models endpoint isn't supported on account tier, fallback to known valid models
-                Result.success(AIModelRegistry.ANTHROPIC_MODELS.map { id ->
-                    DiscoveredModel(
-                        id = id,
-                        displayName = id,
-                        description = AIModelRegistry.getModelDescription(id),
-                        providerType = "ANTHROPIC",
-                        isAvailable = true
-                    )
-                })
-            } else {
-                val friendlyMsg = when (e.code()) {
-                    401, 403 -> "Authentication failed: Invalid Anthropic API key."
-                    429 -> "Anthropic rate limit exceeded."
-                    in 500..599 -> "Anthropic server error (${e.code()})."
-                    else -> "Anthropic API error (${e.code()}): ${e.message()}"
-                }
-                Result.failure(Exception(friendlyMsg, e))
+            val friendlyMsg = when (e.code()) {
+                401, 403 -> "Authentication failed: Invalid Anthropic API key."
+                404 -> "Anthropic models endpoint returned 404 Not Found."
+                429 -> "Anthropic rate limit exceeded."
+                in 500..599 -> "Anthropic server error (${e.code()})."
+                else -> "Anthropic API error (${e.code()}): ${e.message()}"
             }
+            Result.failure(Exception(friendlyMsg, e))
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -253,7 +232,8 @@ class MockModelDiscoveryProvider : ModelDiscoveryProvider {
                     description = "Local mock model for testing and offline development",
                     supportedGenerationMethods = listOf("generateContent"),
                     providerType = "MOCK",
-                    isAvailable = true
+                    isAvailable = true,
+                    isVerifiedLive = true
                 )
             )
         )

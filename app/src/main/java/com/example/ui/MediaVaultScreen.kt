@@ -86,8 +86,25 @@ fun MediaVaultScreen(
                 .padding(paddingValues)
         ) {
             if (generationStatus != null) {
+                val statusText = generationStatus!!
+                val isSuccess = statusText.startsWith("Success")
+                val isMock = statusText.startsWith("[Mock")
+                val isFailed = statusText.startsWith("Generation failed") || statusText.contains("Error", ignoreCase = true)
+                val bgColor = when {
+                    isSuccess -> MaterialTheme.colorScheme.primaryContainer
+                    isMock -> MaterialTheme.colorScheme.secondaryContainer
+                    isFailed -> MaterialTheme.colorScheme.errorContainer
+                    else -> MaterialTheme.colorScheme.surfaceVariant
+                }
+                val textColor = when {
+                    isSuccess -> MaterialTheme.colorScheme.onPrimaryContainer
+                    isMock -> MaterialTheme.colorScheme.onSecondaryContainer
+                    isFailed -> MaterialTheme.colorScheme.onErrorContainer
+                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                }
+
                 Surface(
-                    color = if (generationStatus!!.startsWith("Success")) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                    color = bgColor,
                     shape = RoundedCornerShape(8.dp),
                     modifier = Modifier
                         .fillMaxWidth()
@@ -99,15 +116,16 @@ fun MediaVaultScreen(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            text = generationStatus!!,
+                            text = statusText,
                             style = MaterialTheme.typography.bodySmall,
+                            color = textColor,
                             modifier = Modifier.weight(1f)
                         )
                         IconButton(
                             onClick = { viewModel.clearGenerationStatus() },
                             modifier = Modifier.size(24.dp)
                         ) {
-                            Icon(Icons.Default.Close, contentDescription = "Dismiss", modifier = Modifier.size(16.dp))
+                            Icon(Icons.Default.Close, contentDescription = "Dismiss", modifier = Modifier.size(16.dp), tint = textColor)
                         }
                     }
                 }
