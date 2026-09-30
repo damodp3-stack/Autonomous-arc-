@@ -38,9 +38,9 @@ Phase 10 — Autonomous End-to-End Reliability, Build Verification Gate, Failure
 - **Consistent Model ID Normalization** (`ModelIdNormalizer`) [IMPLEMENTED]: Uniform prefix stripping, whitespace trimming, and prevention of duplicated prefixes (`models/models/gemini-x` -> `gemini-x`).
 
 ## Verified
-- **Unit & Robolectric Test Suite** (`gradle :app:testDebugUnitTest`) [VERIFIED]: 178 passing tests, 0 failures, 0 errors, 0 skipped.
-  - `Phase10ReliabilityTest`: 19/19 passed (End-to-End Expense Tracker, Malformed AI Response, Empty AI Response, Path Traversal Rejection, Missing Dependency, Repeated Failure Blocking, Compile/Build Validation Failure, Unsupported Build Script Limitation, Network Failure, Authentication Fast-Fail, Quota Exceeded Fast-Fail, Model Disappearing Fallback Recovery, Cancellation Clean Stop, Multi-Task Rollback Safety, Idempotent Retry, Dependency Cycle Detection, Excessive Task Count Rejection, Excessive Proposal Size Rejection, Excessive File Content Rejection).
-  - `BuildValidatorTest`: 7/7 passed (Empty project, Empty source file, Unclosed braces, Mismatched parentheses, String/comment brace immunity, XML tag integrity, Unsupported build script detection).
+- **Unit & Robolectric Test Suite** (`gradle :app:testDebugUnitTest`) [VERIFIED]: 199 passing tests, 0 failures, 0 errors, 0 skipped.
+  - `Phase10ReliabilityTest`: 38/38 passed (End-to-End Expense Tracker, Exact A/B/C Multi-File Transactional Rollback, 3-Way New/Modified/Deleted File Rollback, Cancellation in Planning/Generation/Verification/Build Validation, Malformed AI Plan Response, Missing Fields, Duplicate Task IDs, Invalid Task Status, Self-Dependency Rejection, Duplicate Proposal Changes, Null-Byte Path Rejection, Path Traversal Rejection, Dependency Ordering, Failed Dependency Propagation & Blocking, State Machine Blocked/Failed Immutability, Repeated Failure Blocking, Compile/Build Validation Failure Gate, Unsupported Build Script Limitation, Network Failure, Authentication Fast-Fail, Quota Exceeded Fast-Fail, Model Disappearing Fallback Recovery, Multi-Task Rollback Safety, Idempotent Retry, Dependency Cycle Detection, 20/21 Task Count Boundary, 50/51 Proposal Change Boundary, 500KB Content Boundary).
+  - `BuildValidatorTest`: 9/9 passed (Empty project, Empty source file, Unclosed braces, Mismatched parentheses, String/comment brace immunity, XML tag integrity, Unsupported build script detection, Unsupported project type detection e.g. Python, Valid Android Gradle project validation).
   - `AutonomousExecutionEngineTest`: 28/28 passed
   - `Phase9HardeningTest`: 20/20 passed
   - `ProjectFileSystemTest`: 17/17 passed
@@ -62,9 +62,9 @@ Phase 10 — Autonomous End-to-End Reliability, Build Verification Gate, Failure
   - `ExampleRobolectricTest`: 1/1 passed
   - `ExampleUnitTest`: 1/1 passed
 - **Compilation Check** (`compile_applet`) [VERIFIED]: Succeeded with zero errors.
-- **Debug APK Build** (`gradle :app:assembleDebug`) [VERIFIED]: Verified.
-- **Release APK Build** (`gradle :app:assembleRelease`) [VERIFIED]: Verified.
-- **Release Bundle Build** (`gradle :app:bundleRelease`) [VERIFIED]: Verified.
+- **Debug APK Build** (`gradle :app:assembleDebug`) [VERIFIED]: Verified (`app-debug.apk` 23MB).
+- **Release APK Build** (`gradle :app:assembleRelease`) [VERIFIED]: Verified (`app-release.apk` 16MB).
+- **Release Bundle Build** (`gradle :app:bundleRelease`) [VERIFIED]: Verified (`app-release.aab` 16MB).
 
 ## Partially Verified
 - **REST Cloud Sync Adapter** (`RestCloudSyncProvider`) [PARTIALLY VERIFIED]: REST adapter contract, JSON payload formatting, and HTTP conflict detection (HTTP 409) tested with mock/in-memory provider. Live remote sync requires user deployment of an external REST/Supabase backend.
@@ -81,7 +81,7 @@ Phase 10 — Autonomous End-to-End Reliability, Build Verification Gate, Failure
 - None. Deprecated and obsolete models are prevented from selection, dynamic discovery acts as authoritative source of truth, and autonomous execution fails fast or recovers cleanly across all audited failure modes.
 
 ## Latest Tests
-- `gradle :app:testDebugUnitTest`: 178 passed, 0 failures, 0 errors, 0 skipped.
+- `gradle :app:testDebugUnitTest`: 199 passed, 0 failures, 0 errors, 0 skipped.
 
 ## Next Milestone
 - Milestone 11: Production Cloud Backend Deployment & Real-Time Sync Provider Integration.

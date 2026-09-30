@@ -62,17 +62,29 @@ open class ProjectFileRepository(private val fileDao: ProjectFileDao, val fileSy
         val extension = if (name.contains(".")) name.substringAfterLast('.') else ""
         val parentPath = if (path.contains('/')) path.substringBeforeLast('/') else ""
 
-        val newFile = ProjectFileEntity(
-            projectId = projectId,
-            path = path,
-            name = name,
-            extension = extension,
-            content = content,
-            isDirectory = isDirectory,
-            parentPath = parentPath
-        )
-        fileDao.insertFile(newFile)
-        return newFile
+        val existing = fileDao.getFileByPath(projectId, path)
+        val fileEntity = if (existing != null) {
+            existing.copy(
+                name = name,
+                extension = extension,
+                content = content,
+                isDirectory = isDirectory,
+                parentPath = parentPath,
+                updatedAt = System.currentTimeMillis()
+            )
+        } else {
+            ProjectFileEntity(
+                projectId = projectId,
+                path = path,
+                name = name,
+                extension = extension,
+                content = content,
+                isDirectory = isDirectory,
+                parentPath = parentPath
+            )
+        }
+        fileDao.insertFile(fileEntity)
+        return fileEntity
     }
 
     open suspend fun restoreFile(file: ProjectFileEntity): Boolean {

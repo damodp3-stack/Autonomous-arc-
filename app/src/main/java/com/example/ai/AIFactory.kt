@@ -109,6 +109,30 @@ open class AIFactory(
         }
     }
 
+    open fun classifyThrowable(throwable: Throwable): DiagnosticErrorCode {
+        if (throwable is DiagnosticException) {
+            return throwable.errorCode
+        }
+        if (throwable is retrofit2.HttpException) {
+            val errorBody = try { throwable.response()?.errorBody()?.string() } catch (_: Throwable) { null }
+            return classifyHttpError(throwable.code(), errorBody)
+        }
+        if (throwable is java.net.UnknownHostException || throwable is java.net.SocketTimeoutException || throwable is java.io.IOException) {
+            return DiagnosticErrorCode.NETWORK_ERROR
+        }
+        val msg = throwable.message.orEmpty().lowercase()
+        return when {
+            msg.contains("401") || msg.contains("api_key_invalid") || msg.contains("unauthenticated") || msg.contains("authentication") -> DiagnosticErrorCode.AUTHENTICATION_FAILED
+            msg.contains("403") || msg.contains("permission_denied") || msg.contains("forbidden") -> DiagnosticErrorCode.FORBIDDEN
+            msg.contains("404") || msg.contains("not found") || msg.contains("unsupported model") || msg.contains("no longer available") -> DiagnosticErrorCode.MODEL_NOT_FOUND
+            msg.contains("429") && (msg.contains("quota") || msg.contains("resource_exhausted")) -> DiagnosticErrorCode.QUOTA_EXCEEDED
+            msg.contains("429") || msg.contains("rate limit") -> DiagnosticErrorCode.RATE_LIMITED
+            msg.contains("500") || msg.contains("502") || msg.contains("503") || msg.contains("server error") -> DiagnosticErrorCode.SERVER_ERROR
+            msg.contains("network") || msg.contains("timeout") || msg.contains("connection") -> DiagnosticErrorCode.NETWORK_ERROR
+            else -> DiagnosticErrorCode.UNKNOWN_ERROR
+        }
+    }
+
     suspend fun testConnectionDetailed(
         providerType: String,
         apiKey: String,

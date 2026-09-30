@@ -98,4 +98,29 @@ class BuildValidatorTest {
         assertTrue(result is BuildValidationResult.Unsupported)
         assertTrue((result as BuildValidationResult.Unsupported).reason.contains("lacks standard build scripts"))
     }
+
+    @Test
+    fun `test unsupported project type detection like python returns unsupported with explicit reason`() = runBlocking {
+        val files = listOf(
+            ProjectFileEntity(id = "1", projectId = "proj-1", path = "main.py", name = "main.py", extension = "py", content = "def main():\n    print('hello')", isDirectory = false),
+            ProjectFileEntity(id = "2", projectId = "proj-1", path = "requirements.txt", name = "requirements.txt", extension = "txt", content = "requests==2.28.1", isDirectory = false)
+        )
+        val result = validator.validateBuild("proj-1", files)
+        assertTrue(result is BuildValidationResult.Unsupported)
+        val unsupported = result as BuildValidationResult.Unsupported
+        assertTrue(unsupported.reason.contains("cannot be natively compiled in this Android/JVM execution environment"))
+    }
+
+    @Test
+    fun `test valid android gradle project passes build validation gate`() = runBlocking {
+        val files = listOf(
+            ProjectFileEntity(id = "1", projectId = "proj-1", path = "build.gradle.kts", name = "build.gradle.kts", extension = "kts", content = "plugins { kotlin(\"android\") }", isDirectory = false),
+            ProjectFileEntity(id = "2", projectId = "proj-1", path = "app/src/main/java/Main.kt", name = "Main.kt", extension = "kt", content = "package app\nclass Main { fun start() { } }", isDirectory = false),
+            ProjectFileEntity(id = "3", projectId = "proj-1", path = "app/src/main/AndroidManifest.xml", name = "AndroidManifest.xml", extension = "xml", content = "<manifest package=\"com.test\"><application/></manifest>", isDirectory = false)
+        )
+        val result = validator.validateBuild("proj-1", files)
+        assertTrue(result is BuildValidationResult.Success)
+        val success = result as BuildValidationResult.Success
+        assertTrue(success.message.contains("passed syntax and structural integrity validation"))
+    }
 }

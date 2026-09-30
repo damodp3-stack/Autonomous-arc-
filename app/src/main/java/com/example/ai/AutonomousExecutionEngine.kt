@@ -171,63 +171,68 @@ Return ONLY valid JSON. Do not include markdown blocks or other text.
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                val errorMsg = e.message ?: "Unknown error"
-                val isAuthError = errorMsg.contains("401") || errorMsg.contains("API_KEY_INVALID", ignoreCase = true) || errorMsg.contains("authentication", ignoreCase = true)
-                val isForbidden = errorMsg.contains("403") || errorMsg.contains("permission_denied", ignoreCase = true)
-                val isQuota = errorMsg.contains("429") || errorMsg.contains("RESOURCE_EXHAUSTED", ignoreCase = true) || errorMsg.contains("quota", ignoreCase = true)
-                val is404Model = errorMsg.contains("404") || errorMsg.contains("not found", ignoreCase = true) || errorMsg.contains("unsupported", ignoreCase = true)
-
-                if (isAuthError) {
-                    _state.value = AutonomousState.FAILED
-                    _lastError.value = "Authentication failed for $providerName (HTTP 401). Please check your API key in Settings."
-                    recordEvent(AutonomousEventType.RUN_FAILED, null, "Authentication failed for $providerName")
-                    messageRepository.insert(MessageEntity(projectId = projectId, text = "Autonomous Run FAILED: Authentication failed for $providerName. Please verify your API key in Settings.", isUser = false))
-                    return@coroutineScope
-                }
-                if (isForbidden) {
-                    _state.value = AutonomousState.FAILED
-                    _lastError.value = "Access forbidden for $providerName (HTTP 403)."
-                    recordEvent(AutonomousEventType.RUN_FAILED, null, "Access forbidden for $providerName")
-                    messageRepository.insert(MessageEntity(projectId = projectId, text = "Autonomous Run FAILED: Access forbidden for $providerName (HTTP 403).", isUser = false))
-                    return@coroutineScope
-                }
-                if (isQuota) {
-                    _state.value = AutonomousState.FAILED
-                    _lastError.value = "Quota or rate limit exceeded for $providerName (HTTP 429)."
-                    recordEvent(AutonomousEventType.RUN_FAILED, null, "Quota exceeded for $providerName")
-                    messageRepository.insert(MessageEntity(projectId = projectId, text = "Autonomous Run FAILED: Quota or rate limit exceeded for $providerName (HTTP 429).", isUser = false))
-                    return@coroutineScope
-                }
-                if (is404Model) {
-                    val cached = aiFactory.modelSelectionRepository.getCachedModels(providerName)
-                    val fallback = aiFactory.modelSelectionRepository.getCompatibleFallback(providerName, currentModel ?: "", cached)
-                    if (fallback != null && fallback.id != currentModel) {
-                        currentModel = fallback.id
-                        aiProvider = aiFactory.getProvider(projectName, providerName, fallback.id)
-                        recordEvent(AutonomousEventType.RETRY, null, "Model unavailable. Recovered with live discovered model ${fallback.id}")
-                        messageRepository.insert(MessageEntity(projectId = projectId, text = "Model was unavailable. Switched to discovered model: ${fallback.id}", isUser = false))
-                        try {
-                            aiProvider.generateResponse(planPrompt, emptyList(), projectContext)
-                        } catch (e2: Exception) {
-                            _state.value = AutonomousState.FAILED
-                            _lastError.value = "Failed to fetch plan after fallback: ${e2.message}"
-                            recordEvent(AutonomousEventType.RUN_FAILED, null, "Failed to fetch plan after fallback: ${e2.message}")
-                            messageRepository.insert(MessageEntity(projectId = projectId, text = "Autonomous Run FAILED to fetch plan: ${e2.message}", isUser = false))
-                            return@coroutineScope
-                        }
-                    } else {
+                val errorCode = aiFactory.classifyThrowable(e)
+                when (errorCode) {
+                    DiagnosticErrorCode.AUTHENTICATION_FAILED -> {
                         _state.value = AutonomousState.FAILED
-                        _lastError.value = "Model '$currentModel' not found on $providerName and no compatible live fallback is available."
-                        recordEvent(AutonomousEventType.RUN_FAILED, null, "Model not found on $providerName")
-                        messageRepository.insert(MessageEntity(projectId = projectId, text = "Autonomous Run FAILED: Model '$currentModel' not found on $providerName.", isUser = false))
+                        _lastError.value = "Authentication failed for $providerName (HTTP 401). Please check your API key in Settings."
+                        recordEvent(AutonomousEventType.RUN_FAILED, null, "Authentication failed for $providerName")
+                        messageRepository.insert(MessageEntity(projectId = projectId, text = "Autonomous Run FAILED: Authentication failed for $providerName. Please verify your API key in Settings.", isUser = false))
                         return@coroutineScope
                     }
-                } else {
-                    _state.value = AutonomousState.FAILED
-                    _lastError.value = "Failed to fetch plan: ${e.message}"
-                    recordEvent(AutonomousEventType.RUN_FAILED, null, "Failed to fetch plan: ${e.message}")
-                    messageRepository.insert(MessageEntity(projectId = projectId, text = "Autonomous Run FAILED to fetch plan: ${e.message}", isUser = false))
-                    return@coroutineScope
+                    DiagnosticErrorCode.FORBIDDEN -> {
+                        _state.value = AutonomousState.FAILED
+                        _lastError.value = "Access forbidden for $providerName (HTTP 403)."
+                        recordEvent(AutonomousEventType.RUN_FAILED, null, "Access forbidden for $providerName")
+                        messageRepository.insert(MessageEntity(projectId = projectId, text = "Autonomous Run FAILED: Access forbidden for $providerName (HTTP 403).", isUser = false))
+                        return@coroutineScope
+                    }
+                    DiagnosticErrorCode.QUOTA_EXCEEDED, DiagnosticErrorCode.RATE_LIMITED -> {
+                        _state.value = AutonomousState.FAILED
+                        _lastError.value = "Quota or rate limit exceeded for $providerName (HTTP 429)."
+                        recordEvent(AutonomousEventType.RUN_FAILED, null, "Quota exceeded for $providerName")
+                        messageRepository.insert(MessageEntity(projectId = projectId, text = "Autonomous Run FAILED: Quota or rate limit exceeded for $providerName (HTTP 429).", isUser = false))
+                        return@coroutineScope
+                    }
+                    DiagnosticErrorCode.MODEL_NOT_FOUND -> {
+                        val cached = aiFactory.modelSelectionRepository.getCachedModels(providerName)
+                        val fallback = aiFactory.modelSelectionRepository.getCompatibleFallback(providerName, currentModel ?: "", cached)
+                        if (fallback != null && fallback.id != currentModel) {
+                            currentModel = fallback.id
+                            aiProvider = aiFactory.getProvider(projectName, providerName, fallback.id)
+                            recordEvent(AutonomousEventType.RETRY, null, "Model unavailable. Recovered with live discovered model ${fallback.id}")
+                            messageRepository.insert(MessageEntity(projectId = projectId, text = "Model was unavailable. Switched to discovered model: ${fallback.id}", isUser = false))
+                            try {
+                                aiProvider.generateResponse(planPrompt, emptyList(), projectContext)
+                            } catch (e2: Exception) {
+                                _state.value = AutonomousState.FAILED
+                                _lastError.value = "Failed to fetch plan after fallback: ${e2.message}"
+                                recordEvent(AutonomousEventType.RUN_FAILED, null, "Failed to fetch plan after fallback: ${e2.message}")
+                                messageRepository.insert(MessageEntity(projectId = projectId, text = "Autonomous Run FAILED to fetch plan: ${e2.message}", isUser = false))
+                                return@coroutineScope
+                            }
+                        } else {
+                            _state.value = AutonomousState.FAILED
+                            _lastError.value = "Model '$currentModel' not found on $providerName and no compatible live fallback is available."
+                            recordEvent(AutonomousEventType.RUN_FAILED, null, "Model not found on $providerName")
+                            messageRepository.insert(MessageEntity(projectId = projectId, text = "Autonomous Run FAILED: Model '$currentModel' not found on $providerName.", isUser = false))
+                            return@coroutineScope
+                        }
+                    }
+                    DiagnosticErrorCode.NETWORK_ERROR -> {
+                        _state.value = AutonomousState.FAILED
+                        _lastError.value = "Network failure communicating with $providerName: ${e.message}"
+                        recordEvent(AutonomousEventType.RUN_FAILED, null, "Network failure communicating with $providerName")
+                        messageRepository.insert(MessageEntity(projectId = projectId, text = "Autonomous Run FAILED: Network error communicating with $providerName: ${e.message}", isUser = false))
+                        return@coroutineScope
+                    }
+                    else -> {
+                        _state.value = AutonomousState.FAILED
+                        _lastError.value = "Failed to fetch plan: ${e.message}"
+                        recordEvent(AutonomousEventType.RUN_FAILED, null, "Failed to fetch plan: ${e.message}")
+                        messageRepository.insert(MessageEntity(projectId = projectId, text = "Autonomous Run FAILED to fetch plan: ${e.message}", isUser = false))
+                        return@coroutineScope
+                    }
                 }
             }
 
@@ -254,6 +259,7 @@ Return ONLY valid JSON. Do not include markdown blocks or other text.
                 val nextTask = getNextReadyTask(currentPlanVal)
                 if (nextTask == null) {
                     if (currentPlanVal.tasks.all { it.status == AutonomousTaskStatus.COMPLETED }) {
+                        coroutineContext.ensureActive()
                         // Final Verification Gate: Build & Structural Validation
                         _state.value = AutonomousState.BUILD_VALIDATING
                         _lastAction.value = "Running final build and structural verification gate..."
@@ -329,43 +335,41 @@ Return ONLY valid JSON. Do not include markdown blocks or other text.
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
-                        val errorMsg = e.message ?: "Unknown error"
-                        val isAuthError = errorMsg.contains("401") || errorMsg.contains("API_KEY_INVALID", ignoreCase = true) || errorMsg.contains("authentication", ignoreCase = true)
-                        val isForbidden = errorMsg.contains("403") || errorMsg.contains("permission_denied", ignoreCase = true)
-                        val isQuota = errorMsg.contains("429") || errorMsg.contains("RESOURCE_EXHAUSTED", ignoreCase = true) || errorMsg.contains("quota", ignoreCase = true)
-                        val is404Model = errorMsg.contains("404") || errorMsg.contains("not found", ignoreCase = true) || errorMsg.contains("unsupported", ignoreCase = true)
-
-                        if (isAuthError) {
-                            _state.value = AutonomousState.FAILED
-                            _lastError.value = "Authentication failed for $providerName (HTTP 401). Please check your API key in Settings."
-                            recordEvent(AutonomousEventType.RUN_FAILED, nextTask.id, "Authentication failed for $providerName")
-                            messageRepository.insert(MessageEntity(projectId = projectId, text = "Autonomous Run FAILED: Authentication failed for $providerName.", isUser = false))
-                            return@coroutineScope
-                        }
-                        if (isForbidden) {
-                            _state.value = AutonomousState.FAILED
-                            _lastError.value = "Access forbidden for $providerName (HTTP 403)."
-                            recordEvent(AutonomousEventType.RUN_FAILED, nextTask.id, "Access forbidden for $providerName")
-                            messageRepository.insert(MessageEntity(projectId = projectId, text = "Autonomous Run FAILED: Access forbidden for $providerName.", isUser = false))
-                            return@coroutineScope
-                        }
-                        if (isQuota) {
-                            _state.value = AutonomousState.FAILED
-                            _lastError.value = "Quota or rate limit exceeded for $providerName (HTTP 429)."
-                            recordEvent(AutonomousEventType.RUN_FAILED, nextTask.id, "Quota exceeded for $providerName")
-                            messageRepository.insert(MessageEntity(projectId = projectId, text = "Autonomous Run FAILED: Quota or rate limit exceeded for $providerName.", isUser = false))
-                            return@coroutineScope
-                        }
-                        if (is404Model) {
-                            val cached = aiFactory.modelSelectionRepository.getCachedModels(providerName)
-                            val fallback = aiFactory.modelSelectionRepository.getCompatibleFallback(providerName, currentModel ?: "", cached)
-                            if (fallback != null && fallback.id != currentModel) {
-                                currentModel = fallback.id
-                                aiProvider = aiFactory.getProvider(projectName, providerName, fallback.id)
-                                recordEvent(AutonomousEventType.RETRY, nextTask.id, "Model unavailable. Switched to discovered model ${fallback.id}")
-                                messageRepository.insert(MessageEntity(projectId = projectId, text = "Model was unavailable. Switched to discovered model: ${fallback.id}", isUser = false))
-                                continue
+                        val errorCode = aiFactory.classifyThrowable(e)
+                        when (errorCode) {
+                            DiagnosticErrorCode.AUTHENTICATION_FAILED -> {
+                                _state.value = AutonomousState.FAILED
+                                _lastError.value = "Authentication failed for $providerName (HTTP 401). Please check your API key in Settings."
+                                recordEvent(AutonomousEventType.RUN_FAILED, nextTask.id, "Authentication failed for $providerName")
+                                messageRepository.insert(MessageEntity(projectId = projectId, text = "Autonomous Run FAILED: Authentication failed for $providerName.", isUser = false))
+                                return@coroutineScope
                             }
+                            DiagnosticErrorCode.FORBIDDEN -> {
+                                _state.value = AutonomousState.FAILED
+                                _lastError.value = "Access forbidden for $providerName (HTTP 403)."
+                                recordEvent(AutonomousEventType.RUN_FAILED, nextTask.id, "Access forbidden for $providerName")
+                                messageRepository.insert(MessageEntity(projectId = projectId, text = "Autonomous Run FAILED: Access forbidden for $providerName.", isUser = false))
+                                return@coroutineScope
+                            }
+                            DiagnosticErrorCode.QUOTA_EXCEEDED, DiagnosticErrorCode.RATE_LIMITED -> {
+                                _state.value = AutonomousState.FAILED
+                                _lastError.value = "Quota or rate limit exceeded for $providerName (HTTP 429)."
+                                recordEvent(AutonomousEventType.RUN_FAILED, nextTask.id, "Quota exceeded for $providerName")
+                                messageRepository.insert(MessageEntity(projectId = projectId, text = "Autonomous Run FAILED: Quota or rate limit exceeded for $providerName.", isUser = false))
+                                return@coroutineScope
+                            }
+                            DiagnosticErrorCode.MODEL_NOT_FOUND -> {
+                                val cached = aiFactory.modelSelectionRepository.getCachedModels(providerName)
+                                val fallback = aiFactory.modelSelectionRepository.getCompatibleFallback(providerName, currentModel ?: "", cached)
+                                if (fallback != null && fallback.id != currentModel) {
+                                    currentModel = fallback.id
+                                    aiProvider = aiFactory.getProvider(projectName, providerName, fallback.id)
+                                    recordEvent(AutonomousEventType.RETRY, nextTask.id, "Model unavailable. Switched to discovered model ${fallback.id}")
+                                    messageRepository.insert(MessageEntity(projectId = projectId, text = "Model was unavailable. Switched to discovered model: ${fallback.id}", isUser = false))
+                                    continue
+                                }
+                            }
+                            else -> { /* treat as retryable failure */ }
                         }
 
                         consecutiveFailures++
@@ -446,6 +450,7 @@ Return ONLY valid JSON. Do not include markdown blocks or other text.
                         recordEvent(AutonomousEventType.PROPOSAL_APPLIED, nextTask.id, "Applied ${proposal.changes.size} changes")
 
                         // 4. Verifying Stage
+                        coroutineContext.ensureActive()
                         _state.value = AutonomousState.VERIFYING
                         _lastAction.value = "Verifying task ${nextTask.id}"
 
@@ -671,6 +676,8 @@ Respond with ONLY a JSON object:
             val clean = response.replace(Regex("```json\\s*"), "").replace(Regex("```\\s*"), "").trim()
             val json = JSONObject(clean)
             json.optBoolean("isSatisfied", false)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             false
         }
@@ -784,14 +791,28 @@ Please carefully analyze the error and the current state of files, and propose t
                 throw IllegalArgumentException("Task description for $id cannot be blank")
             }
 
+            var taskStatus = AutonomousTaskStatus.PENDING
+            if (tObj.has("status") && !tObj.isNull("status")) {
+                val statusStr = tObj.getString("status").uppercase()
+                try {
+                    taskStatus = AutonomousTaskStatus.valueOf(statusStr)
+                } catch (e: Exception) {
+                    throw IllegalArgumentException("Invalid task status '$statusStr' for task $id")
+                }
+            }
+
             val dependsOn = mutableListOf<String>()
             if (tObj.has("dependsOn") && !tObj.isNull("dependsOn")) {
                 val depArray = tObj.getJSONArray("dependsOn")
                 for (j in 0 until depArray.length()) {
-                    dependsOn.add(depArray.getString(j))
+                    val dep = depArray.getString(j)
+                    if (dep == id) {
+                        throw IllegalArgumentException("Task $id cannot depend on itself (dependency cycle detected)")
+                    }
+                    dependsOn.add(dep)
                 }
             }
-            tasks.add(AutonomousTask(id = id, description = desc, dependsOn = dependsOn))
+            tasks.add(AutonomousTask(id = id, description = desc, dependsOn = dependsOn, status = taskStatus))
         }
 
         val taskIds = tasks.map { it.id }

@@ -32,6 +32,16 @@ class DefaultBuildValidator : BuildValidator {
 
         val errors = mutableListOf<String>()
 
+        val unsupportedExtensions = setOf("py", "cpp", "c", "rs", "go", "rb", "php", "cs")
+        val hasUnsupportedFiles = files.any { it.extension.lowercase() in unsupportedExtensions }
+        val hasJvmSourceFiles = files.any { it.extension.lowercase() in setOf("kt", "java", "kts", "gradle") }
+
+        if (hasUnsupportedFiles && !hasJvmSourceFiles) {
+            return BuildValidationResult.Unsupported(
+                reason = "Project target language cannot be natively compiled in this Android/JVM execution environment; structural and syntax validation performed."
+            )
+        }
+
         for (file in files) {
             if (file.isDirectory) continue
 

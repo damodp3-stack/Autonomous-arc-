@@ -122,10 +122,16 @@ class CodeChangeApplier(
                     rollback(projectId, createdFileIds, snapshot)
                     true
                 } catch (rollbackEx: Exception) {
+                    if (e is kotlinx.coroutines.CancellationException) {
+                        throw e
+                    }
                     return ApplyResult.RollbackError(
                         originalError = e.message ?: "Unknown application error",
                         rollbackError = rollbackEx.message ?: "Unknown rollback error"
                     )
+                }
+                if (e is kotlinx.coroutines.CancellationException) {
+                    throw e
                 }
                 return ApplyResult.ApplyError(e.message ?: "Exception during apply", change, rollbackSuccess)
             }
@@ -155,10 +161,12 @@ class CodeChangeApplier(
                     throw Exception("Failed to restore file ${entity.path} during rollback")
                 }
             } else {
-                
-                repository.fileSystem.deleteFile(projectId, path)
-                // If it was somehow recorded in DB under a new ID, we'd delete it, but for RENAME the ID is reused.
-                // For CREATE, createdFileIds handles deletion.
+                val currentFile = repository.getFileByPath(projectId, path)
+                if (currentFile != null) {
+                    repository.deleteFile(currentFile.id)
+                } else {
+                    repository.fileSystem.deleteFile(projectId, path)
+                }
             }
         }
     }

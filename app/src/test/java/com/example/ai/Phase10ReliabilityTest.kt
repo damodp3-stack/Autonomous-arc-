@@ -715,4 +715,496 @@ class Phase10ReliabilityTest {
         assertTrue(result is ProposalValidationResult.Invalid)
         assertTrue((result as ProposalValidationResult.Invalid).reason.contains("exceeds 500KB limit"))
     }
+
+    // =========================================================================
+    // 5. TRANSACTIONAL ROLLBACK SCENARIOS (Requirement 4)
+    // =========================================================================
+
+    @Test
+    fun `test exact scenario valid files A and B autonomous task changes A creates C validation fails rollback restores A removes C leaves B untouched`() = runBlocking {
+        // 1. Existing project has valid files A and B
+        fileRepository.createFile(projectId, "src/A.kt", "class A { val initial = 1 }")
+        fileRepository.createFile(projectId, "src/B.kt", "class B { val initial = 2 }")
+
+        val fileAInitial = fileRepository.getFileByPath(projectId, "src/A.kt")!!
+        val fileBInitial = fileRepository.getFileByPath(projectId, "src/B.kt")!!
+
+        // 2 & 3. Autonomous task changes A and creates C
+        val proposal = CodeChangeProposal(
+            summary = "Modify A and Create C",
+            explanation = "Testing atomic multi-file rollback",
+            changes = listOf(
+                FileChange(
+                    filePath = "src/A.kt",
+                    operation = FileOperation.MODIFY,
+                    originalContent = fileAInitial.content,
+                    proposedContent = "class A { val modified = 999 }"
+                ),
+                FileChange(
+                    filePath = "src/C.kt",
+                    operation = FileOperation.CREATE,
+                    proposedContent = "class C { val brandNew = true }"
+                )
+            )
+        )
+
+        // Apply proposal
+        val applyResult = codeChangeApplier.applyProposal(projectId, proposal)
+        assertTrue(applyResult is ApplyResult.Success)
+        val successResult = applyResult as ApplyResult.Success
+
+        // Verify intermediate state
+        assertEquals("class A { val modified = 999 }", fileRepository.getFileByPath(projectId, "src/A.kt")!!.content)
+        assertNotNull(fileRepository.getFileByPath(projectId, "src/C.kt"))
+
+        // 4. Later validation fails -> 5. Rollback occurs
+        codeChangeApplier.rollback(projectId, successResult.createdFileIds, successResult.snapshot)
+
+        // Assertions:
+        // - A restored exactly
+        val fileARestored = fileRepository.getFileByPath(projectId, "src/A.kt")
+        assertNotNull("File A must still exist", fileARestored)
+        assertEquals("class A { val initial = 1 }", fileARestored!!.content)
+
+        // - C removed
+        val fileC = fileRepository.getFileByPath(projectId, "src/C.kt")
+        assertNull("File C must be removed after rollback", fileC)
+
+        // - B untouched
+        val fileB = fileRepository.getFileByPath(projectId, "src/B.kt")
+        assertNotNull("File B must still exist untouched", fileB)
+        assertEquals("class B { val initial = 2 }", fileB!!.content)
+
+        // - project metadata remains valid (exactly 2 files)
+        val allFiles = fileRepository.getFilesForProject(projectId).first()
+        assertEquals(2, allFiles.size)
+        val paths = allFiles.map { it.path }.toSet()
+        assertEquals(setOf("src/A.kt", "src/B.kt"), paths)
+    }
+
+    @Test
+    fun `test multi-file rollback with new file, modified file, and deleted file`() = runBlocking {
+        fileRepository.createFile(projectId, "src/Mod.kt", "val originalMod = true")
+        fileRepository.createFile(projectId, "src/Del.kt", "val originalDel = true")
+
+        val modInitial = fileRepository.getFileByPath(projectId, "src/Mod.kt")!!
+        val delInitial = fileRepository.getFileByPath(projectId, "src/Del.kt")!!
+
+        val proposal = CodeChangeProposal(
+            summary = "Create New, Modify Mod, Delete Del",
+            explanation = "3-way file operation",
+            changes = listOf(
+                FileChange("src/New.kt", FileOperation.CREATE, proposedContent = "val newFile = 1"),
+                FileChange("src/Mod.kt", FileOperation.MODIFY, originalContent = modInitial.content, proposedContent = "val modifiedMod = 2"),
+                FileChange("src/Del.kt", FileOperation.DELETE, originalContent = delInitial.content)
+            )
+        )
+
+        val result = codeChangeApplier.applyProposal(projectId, proposal)
+        assertTrue(result is ApplyResult.Success)
+        val success = result as ApplyResult.Success
+
+        // Verify applied state
+        assertNotNull(fileRepository.getFileByPath(projectId, "src/New.kt"))
+        assertEquals("val modifiedMod = 2", fileRepository.getFileByPath(projectId, "src/Mod.kt")!!.content)
+        assertNull(fileRepository.getFileByPath(projectId, "src/Del.kt"))
+
+        // Trigger rollback
+        codeChangeApplier.rollback(projectId, success.createdFileIds, success.snapshot)
+
+        // Assert all restored
+        assertNull(fileRepository.getFileByPath(projectId, "src/New.kt"))
+        assertEquals("val originalMod = true", fileRepository.getFileByPath(projectId, "src/Mod.kt")!!.content)
+        assertNotNull(fileRepository.getFileByPath(projectId, "src/Del.kt"))
+        assertEquals("val originalDel = true", fileRepository.getFileByPath(projectId, "src/Del.kt")!!.content)
+    }
+
+    // =========================================================================
+    // 6. CANCELLATION SAFETY IN ALL PHASES (Requirement 5)
+    // =========================================================================
+
+    @Test
+    fun `test cancellation during task generation leaves workspace clean and engine stopped`() = runBlocking {
+        fakeAIProvider.generateResponseHandler = { _, _, _ ->
+            """{"goal": "Cancel In Gen", "tasks": [{"id": "t1", "description": "t1", "dependsOn": []}]}"""
+        }
+        fakeAIProvider.proposeCodeChangesHandler = { _, _ ->
+            engine.stop()
+            throw CancellationException("Cancelled during task generation")
+        }
+
+        try {
+            engine.start("Cancel In Gen", "GEMINI", projectName)
+        } catch (_: CancellationException) {}
+
+        assertEquals(AutonomousState.STOPPED, engine.state.value)
+        val files = fileRepository.getFilesForProject(projectId).first()
+        assertTrue(files.isEmpty())
+    }
+
+    @Test
+    fun `test cancellation during verification rolls back and leaves engine stopped`() = runBlocking {
+        fakeAIProvider.generateResponseHandler = { _, _, _ ->
+            """{"goal": "Cancel In Verify", "tasks": [{"id": "t1", "description": "t1", "dependsOn": []}]}"""
+        }
+        fakeAIProvider.proposeCodeChangesHandler = { _, _ ->
+            CodeChangeProposal(
+                summary = "Create file before cancel",
+                explanation = "exp",
+                changes = listOf(FileChange("src/PreCancel.kt", FileOperation.CREATE, proposedContent = "class PreCancel"))
+            )
+        }
+
+        val cancelEngine = object : AutonomousExecutionEngine(
+            projectId = projectId,
+            fileRepository = fileRepository,
+            messageRepository = messageRepository,
+            codeChangeApplier = codeChangeApplier,
+            aiFactory = fakeAIFactory,
+            buildValidator = DefaultBuildValidator()
+        ) {
+            override suspend fun verifyChanges(projectId: String, proposal: CodeChangeProposal): Boolean {
+                stop()
+                throw CancellationException("Cancelled during verification")
+            }
+        }
+
+        try {
+            cancelEngine.start("Cancel In Verify", "GEMINI", projectName)
+        } catch (_: CancellationException) {}
+
+        assertEquals(AutonomousState.STOPPED, cancelEngine.state.value)
+    }
+
+    @Test
+    fun `test cancellation during build validation marks engine stopped not completed`() = runBlocking {
+        fakeAIProvider.generateResponseHandler = { _, _, _ ->
+            """{"goal": "Cancel In Build Val", "tasks": [{"id": "t1", "description": "t1", "dependsOn": []}]}"""
+        }
+        fakeAIProvider.proposeCodeChangesHandler = { _, _ ->
+            CodeChangeProposal(
+                summary = "Create file",
+                explanation = "exp",
+                changes = listOf(FileChange("src/File.kt", FileOperation.CREATE, proposedContent = "class File"))
+            )
+        }
+
+        val cancellingValidator = object : BuildValidator {
+            override suspend fun validateBuild(projectId: String, files: List<ProjectFileEntity>): BuildValidationResult {
+                throw CancellationException("Cancelled during build validation")
+            }
+        }
+
+        val buildCancelEngine = AutonomousExecutionEngine(
+            projectId = projectId,
+            fileRepository = fileRepository,
+            messageRepository = messageRepository,
+            codeChangeApplier = codeChangeApplier,
+            aiFactory = fakeAIFactory,
+            buildValidator = cancellingValidator
+        )
+
+        try {
+            buildCancelEngine.start("Cancel In Build Val", "GEMINI", projectName)
+        } catch (_: CancellationException) {}
+
+        assertEquals(AutonomousState.STOPPED, buildCancelEngine.state.value)
+        assertNotEquals(AutonomousState.COMPLETED, buildCancelEngine.state.value)
+    }
+
+    // =========================================================================
+    // 7. MALFORMED AI OUTPUT & PARSING SAFETY (Requirement 6)
+    // =========================================================================
+
+    @Test
+    fun `test markdown wrapped json in plan is cleaned and parsed properly`() {
+        val markdownJson = """
+        ```json
+        {
+          "goal": "Markdown Goal",
+          "tasks": [
+            { "id": "t1", "description": "Markdown Task", "dependsOn": [] }
+          ]
+        }
+        ```
+        """.trimIndent()
+
+        val plan = engine.parseAndValidatePlan(markdownJson)
+        assertEquals("Markdown Goal", plan.goal)
+        assertEquals(1, plan.tasks.size)
+        assertEquals("t1", plan.tasks[0].id)
+    }
+
+    @Test
+    fun `test plan missing required fields throws useful error`() {
+        // Missing goal
+        assertThrows(IllegalArgumentException::class.java) {
+            engine.parseAndValidatePlan("""{"tasks": [{"id": "t1", "description": "desc"}]}""")
+        }
+
+        // Missing tasks
+        assertThrows(IllegalArgumentException::class.java) {
+            engine.parseAndValidatePlan("""{"goal": "Valid goal"}""")
+        }
+
+        // Task missing id
+        assertThrows(IllegalArgumentException::class.java) {
+            engine.parseAndValidatePlan("""{"goal": "g", "tasks": [{"description": "missing id"}]}""")
+        }
+
+        // Task missing description
+        assertThrows(IllegalArgumentException::class.java) {
+            engine.parseAndValidatePlan("""{"goal": "g", "tasks": [{"id": "t1"}]}""")
+        }
+    }
+
+    @Test
+    fun `test plan with duplicate task IDs is rejected`() {
+        val json = """
+        {
+          "goal": "Duplicate IDs",
+          "tasks": [
+            { "id": "t1", "description": "Task 1", "dependsOn": [] },
+            { "id": "t1", "description": "Duplicate Task 1", "dependsOn": [] }
+          ]
+        }
+        """.trimIndent()
+
+        val ex = assertThrows(IllegalArgumentException::class.java) {
+            engine.parseAndValidatePlan(json)
+        }
+        assertTrue(ex.message!!.contains("Duplicate task IDs"))
+    }
+
+    @Test
+    fun `test plan with invalid task status is rejected`() {
+        val json = """
+        {
+          "goal": "Invalid Status",
+          "tasks": [
+            { "id": "t1", "description": "Task 1", "status": "UNKNOWN_BOGUS_STATUS" }
+          ]
+        }
+        """.trimIndent()
+
+        val ex = assertThrows(IllegalArgumentException::class.java) {
+            engine.parseAndValidatePlan(json)
+        }
+        assertTrue(ex.message!!.contains("Invalid task status"))
+    }
+
+    @Test
+    fun `test plan where task depends on itself is rejected`() {
+        val json = """
+        {
+          "goal": "Self Dep",
+          "tasks": [
+            { "id": "t1", "description": "Self dependent", "dependsOn": ["t1"] }
+          ]
+        }
+        """.trimIndent()
+
+        val ex = assertThrows(IllegalArgumentException::class.java) {
+            engine.parseAndValidatePlan(json)
+        }
+        assertTrue(ex.message!!.contains("cannot depend on itself"))
+    }
+
+    @Test
+    fun `test proposal with duplicate file paths is rejected by validator`() {
+        val proposal = CodeChangeProposal(
+            summary = "Duplicate paths",
+            explanation = "desc",
+            changes = listOf(
+                FileChange("src/Same.kt", FileOperation.CREATE, proposedContent = "v1"),
+                FileChange("src/Same.kt", FileOperation.CREATE, proposedContent = "v2")
+            )
+        )
+
+        val result = engine.validateProposal(proposal)
+        assertTrue(result is ProposalValidationResult.Invalid)
+        assertTrue((result as ProposalValidationResult.Invalid).reason.contains("Duplicate conflicting change"))
+    }
+
+    @Test
+    fun `test proposal with null byte in path is rejected by validator`() {
+        val proposal = CodeChangeProposal(
+            summary = "Null byte exploit",
+            explanation = "desc",
+            changes = listOf(
+                FileChange("src/File\u0000.kt", FileOperation.CREATE, proposedContent = "hack")
+            )
+        )
+
+        val result = engine.validateProposal(proposal)
+        assertTrue(result is ProposalValidationResult.Invalid)
+        assertTrue((result as ProposalValidationResult.Invalid).reason.contains("null byte"))
+    }
+
+    // =========================================================================
+    // 8. DEPENDENCY SAFETY & ORDERING (Requirement 7)
+    // =========================================================================
+
+    @Test
+    fun `test dependency ordering executes prerequisites strictly before dependent tasks`() = runBlocking {
+        val executionOrder = mutableListOf<String>()
+
+        fakeAIProvider.generateResponseHandler = { _, _, _ ->
+            """
+            {
+              "goal": "Ordering Test",
+              "tasks": [
+                { "id": "t-second", "description": "Depends on first", "dependsOn": ["t-first"] },
+                { "id": "t-first", "description": "Prerequisite", "dependsOn": [] }
+              ]
+            }
+            """.trimIndent()
+        }
+
+        fakeAIProvider.proposeCodeChangesHandler = { request, _ ->
+            when {
+                request.contains("- ID: t-first") -> {
+                    executionOrder.add("t-first")
+                    CodeChangeProposal(summary = "First", explanation = "desc", changes = listOf(FileChange("src/First.kt", FileOperation.CREATE, proposedContent = "class First")))
+                }
+                request.contains("- ID: t-second") -> {
+                    executionOrder.add("t-second")
+                    CodeChangeProposal(summary = "Second", explanation = "desc", changes = listOf(FileChange("src/Second.kt", FileOperation.CREATE, proposedContent = "class Second")))
+                }
+                else -> error("Unexpected")
+            }
+        }
+
+        engine.start("Ordering Test", "GEMINI", projectName)
+
+        assertEquals(AutonomousState.COMPLETED, engine.state.value)
+        assertEquals(listOf("t-first", "t-second"), executionOrder)
+    }
+
+    @Test
+    fun `test failed dependency blocks downstream tasks and prevents completion`() = runBlocking {
+        val executedTasks = mutableListOf<String>()
+
+        fakeAIProvider.generateResponseHandler = { _, _, _ ->
+            """
+            {
+              "goal": "Dep Failure Propagation",
+              "tasks": [
+                { "id": "t1", "description": "Fails and blocks", "dependsOn": [] },
+                { "id": "t2", "description": "Depends on t1", "dependsOn": ["t1"] }
+              ]
+            }
+            """.trimIndent()
+        }
+
+        fakeAIProvider.proposeCodeChangesHandler = { request, _ ->
+            if (request.contains("- ID: t1")) {
+                executedTasks.add("t1")
+                // Propose invalid blank path to force repeated failure and blocking
+                CodeChangeProposal(summary = "Bad", explanation = "desc", changes = listOf(FileChange("", FileOperation.CREATE, proposedContent = "broken")))
+            } else {
+                executedTasks.add("t2")
+                CodeChangeProposal(summary = "Good", explanation = "desc", changes = listOf(FileChange("src/Good.kt", FileOperation.CREATE, proposedContent = "class Good")))
+            }
+        }
+
+        engine.start("Dep Failure Propagation", "GEMINI", projectName)
+
+        // Must be BLOCKED, never COMPLETED!
+        assertEquals(AutonomousState.BLOCKED, engine.state.value)
+        // t2 must NEVER have been executed because t1 was blocked!
+        assertTrue(executedTasks.isNotEmpty() && executedTasks.all { it == "t1" })
+        assertFalse(executedTasks.contains("t2"))
+    }
+
+    // =========================================================================
+    // 9. STATE MACHINE REGRESSION TESTS (Requirement 9)
+    // =========================================================================
+
+    @Test
+    fun `test blocked state cannot become completed`() = runBlocking {
+        fakeAIProvider.generateResponseHandler = { _, _, _ ->
+            """{"goal": "Blocked Run", "tasks": [{"id": "t1", "description": "desc", "dependsOn": []}]}"""
+        }
+        fakeAIProvider.proposeCodeChangesHandler = { _, _ ->
+            CodeChangeProposal(summary = "Bad", explanation = "desc", changes = listOf(FileChange("", FileOperation.CREATE, proposedContent = "bad")))
+        }
+
+        engine.start("Blocked Run", "GEMINI", projectName)
+        assertEquals(AutonomousState.BLOCKED, engine.state.value)
+
+        // Calling start with a running task is guarded; state remains BLOCKED
+        assertNotEquals(AutonomousState.COMPLETED, engine.state.value)
+    }
+
+    @Test
+    fun `test build validation failure transitions to failed not completed`() = runBlocking {
+        fakeAIProvider.generateResponseHandler = { _, _, _ ->
+            """{"goal": "Val Fail", "tasks": [{"id": "t1", "description": "desc", "dependsOn": []}]}"""
+        }
+        fakeAIProvider.proposeCodeChangesHandler = { _, _ ->
+            CodeChangeProposal(summary = "Code", explanation = "desc", changes = listOf(FileChange("src/Code.kt", FileOperation.CREATE, proposedContent = "class Code")))
+        }
+
+        val failingValidator = object : BuildValidator {
+            override suspend fun validateBuild(projectId: String, files: List<ProjectFileEntity>): BuildValidationResult {
+                return BuildValidationResult.Failure("Custom validation failure", listOf("Error 1", "Error 2"))
+            }
+        }
+
+        val failEngine = AutonomousExecutionEngine(
+            projectId = projectId,
+            fileRepository = fileRepository,
+            messageRepository = messageRepository,
+            codeChangeApplier = codeChangeApplier,
+            aiFactory = fakeAIFactory,
+            buildValidator = failingValidator
+        )
+
+        failEngine.start("Val Fail", "GEMINI", projectName)
+
+        assertEquals(AutonomousState.FAILED, failEngine.state.value)
+        assertNotEquals(AutonomousState.COMPLETED, failEngine.state.value)
+        assertTrue(failEngine.lastError.value!!.contains("Build validation failed"))
+    }
+
+    // =========================================================================
+    // 10. STRESS & BOUNDARY TESTS (Requirement 11)
+    // =========================================================================
+
+    @Test
+    fun `test plan boundary exactly 20 tasks accepted and 21 tasks rejected`() {
+        val tasks20 = (1..20).map { """{"id": "t$it", "description": "T$it", "dependsOn": []}""" }.joinToString(",")
+        val json20 = """{"goal": "20 tasks", "tasks": [$tasks20]}"""
+        val plan20 = engine.parseAndValidatePlan(json20)
+        assertEquals(20, plan20.tasks.size)
+
+        val tasks21 = (1..21).map { """{"id": "t$it", "description": "T$it", "dependsOn": []}""" }.joinToString(",")
+        val json21 = """{"goal": "21 tasks", "tasks": [$tasks21]}"""
+        assertThrows(IllegalArgumentException::class.java) {
+            engine.parseAndValidatePlan(json21)
+        }
+    }
+
+    @Test
+    fun `test proposal boundary exactly 50 changes accepted and 51 changes rejected`() {
+        val changes50 = (1..50).map { FileChange("src/F$it.kt", FileOperation.CREATE, proposedContent = "c") }
+        val proposal50 = CodeChangeProposal(summary = "50", explanation = "d", changes = changes50)
+        assertTrue(engine.validateProposal(proposal50) is ProposalValidationResult.Valid)
+
+        val changes51 = (1..51).map { FileChange("src/F$it.kt", FileOperation.CREATE, proposedContent = "c") }
+        val proposal51 = CodeChangeProposal(summary = "51", explanation = "d", changes = changes51)
+        assertTrue(engine.validateProposal(proposal51) is ProposalValidationResult.Invalid)
+    }
+
+    @Test
+    fun `test content size boundary 500000 bytes accepted and 500001 bytes rejected`() {
+        val content500k = "A".repeat(500_000)
+        val proposal500k = CodeChangeProposal(summary = "500k", explanation = "d", changes = listOf(FileChange("src/F.kt", FileOperation.CREATE, proposedContent = content500k)))
+        assertTrue(engine.validateProposal(proposal500k) is ProposalValidationResult.Valid)
+
+        val content500kPlus1 = "A".repeat(500_001)
+        val proposal500kPlus1 = CodeChangeProposal(summary = "500k1", explanation = "d", changes = listOf(FileChange("src/F.kt", FileOperation.CREATE, proposedContent = content500kPlus1)))
+        assertTrue(engine.validateProposal(proposal500kPlus1) is ProposalValidationResult.Invalid)
+    }
 }
