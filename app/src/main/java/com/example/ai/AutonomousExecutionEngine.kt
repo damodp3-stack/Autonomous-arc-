@@ -33,7 +33,7 @@ data class AutonomousPlan(
 )
 
 enum class AutonomousState {
-    IDLE, PLANNING, GENERATING, VALIDATING, APPLYING, VERIFYING, CONTINUING, COMPLETED, FAILED, BLOCKED, STOPPED
+    IDLE, PLANNING, GENERATING, VALIDATING, APPLYING, VERIFYING, BUILD_VALIDATING, CONTINUING, COMPLETED, FAILED, BLOCKED, STOPPED
 }
 
 enum class AutonomousEventType {
@@ -47,6 +47,8 @@ enum class AutonomousEventType {
     RETRY,
     TASK_COMPLETED,
     TASK_BLOCKED,
+    BUILD_VALIDATED,
+    BUILD_VALIDATION_FAILED,
     RUN_COMPLETED,
     RUN_STOPPED,
     RUN_FAILED
@@ -69,7 +71,8 @@ open class AutonomousExecutionEngine(
     private val fileRepository: ProjectFileRepository,
     private val messageRepository: MessageRepository,
     private val codeChangeApplier: CodeChangeApplier,
-    private val aiFactory: AIFactory
+    private val aiFactory: AIFactory,
+    val buildValidator: BuildValidator = DefaultBuildValidator()
 ) {
     private val _state = MutableStateFlow(AutonomousState.IDLE)
     val state: StateFlow<AutonomousState> = _state.asStateFlow()
@@ -138,7 +141,8 @@ open class AutonomousExecutionEngine(
 
         try {
             coroutineContext.ensureActive()
-            val aiProvider = aiFactory.getProvider(projectName, providerName, model)
+            var currentModel = model
+            var aiProvider = aiFactory.getProvider(projectName, providerName, currentModel)
 
             _state.value = AutonomousState.PLANNING
             _lastAction.value = "Creating execution plan..."
@@ -167,11 +171,64 @@ Return ONLY valid JSON. Do not include markdown blocks or other text.
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _state.value = AutonomousState.FAILED
-                _lastError.value = "Failed to fetch plan: ${e.message}"
-                recordEvent(AutonomousEventType.RUN_FAILED, null, "Failed to fetch plan: ${e.message}")
-                messageRepository.insert(MessageEntity(projectId = projectId, text = "Autonomous Run FAILED to fetch plan: ${e.message}", isUser = false))
-                return@coroutineScope
+                val errorMsg = e.message ?: "Unknown error"
+                val isAuthError = errorMsg.contains("401") || errorMsg.contains("API_KEY_INVALID", ignoreCase = true) || errorMsg.contains("authentication", ignoreCase = true)
+                val isForbidden = errorMsg.contains("403") || errorMsg.contains("permission_denied", ignoreCase = true)
+                val isQuota = errorMsg.contains("429") || errorMsg.contains("RESOURCE_EXHAUSTED", ignoreCase = true) || errorMsg.contains("quota", ignoreCase = true)
+                val is404Model = errorMsg.contains("404") || errorMsg.contains("not found", ignoreCase = true) || errorMsg.contains("unsupported", ignoreCase = true)
+
+                if (isAuthError) {
+                    _state.value = AutonomousState.FAILED
+                    _lastError.value = "Authentication failed for $providerName (HTTP 401). Please check your API key in Settings."
+                    recordEvent(AutonomousEventType.RUN_FAILED, null, "Authentication failed for $providerName")
+                    messageRepository.insert(MessageEntity(projectId = projectId, text = "Autonomous Run FAILED: Authentication failed for $providerName. Please verify your API key in Settings.", isUser = false))
+                    return@coroutineScope
+                }
+                if (isForbidden) {
+                    _state.value = AutonomousState.FAILED
+                    _lastError.value = "Access forbidden for $providerName (HTTP 403)."
+                    recordEvent(AutonomousEventType.RUN_FAILED, null, "Access forbidden for $providerName")
+                    messageRepository.insert(MessageEntity(projectId = projectId, text = "Autonomous Run FAILED: Access forbidden for $providerName (HTTP 403).", isUser = false))
+                    return@coroutineScope
+                }
+                if (isQuota) {
+                    _state.value = AutonomousState.FAILED
+                    _lastError.value = "Quota or rate limit exceeded for $providerName (HTTP 429)."
+                    recordEvent(AutonomousEventType.RUN_FAILED, null, "Quota exceeded for $providerName")
+                    messageRepository.insert(MessageEntity(projectId = projectId, text = "Autonomous Run FAILED: Quota or rate limit exceeded for $providerName (HTTP 429).", isUser = false))
+                    return@coroutineScope
+                }
+                if (is404Model) {
+                    val cached = aiFactory.modelSelectionRepository.getCachedModels(providerName)
+                    val fallback = aiFactory.modelSelectionRepository.getCompatibleFallback(providerName, currentModel ?: "", cached)
+                    if (fallback != null && fallback.id != currentModel) {
+                        currentModel = fallback.id
+                        aiProvider = aiFactory.getProvider(projectName, providerName, fallback.id)
+                        recordEvent(AutonomousEventType.RETRY, null, "Model unavailable. Recovered with live discovered model ${fallback.id}")
+                        messageRepository.insert(MessageEntity(projectId = projectId, text = "Model was unavailable. Switched to discovered model: ${fallback.id}", isUser = false))
+                        try {
+                            aiProvider.generateResponse(planPrompt, emptyList(), projectContext)
+                        } catch (e2: Exception) {
+                            _state.value = AutonomousState.FAILED
+                            _lastError.value = "Failed to fetch plan after fallback: ${e2.message}"
+                            recordEvent(AutonomousEventType.RUN_FAILED, null, "Failed to fetch plan after fallback: ${e2.message}")
+                            messageRepository.insert(MessageEntity(projectId = projectId, text = "Autonomous Run FAILED to fetch plan: ${e2.message}", isUser = false))
+                            return@coroutineScope
+                        }
+                    } else {
+                        _state.value = AutonomousState.FAILED
+                        _lastError.value = "Model '$currentModel' not found on $providerName and no compatible live fallback is available."
+                        recordEvent(AutonomousEventType.RUN_FAILED, null, "Model not found on $providerName")
+                        messageRepository.insert(MessageEntity(projectId = projectId, text = "Autonomous Run FAILED: Model '$currentModel' not found on $providerName.", isUser = false))
+                        return@coroutineScope
+                    }
+                } else {
+                    _state.value = AutonomousState.FAILED
+                    _lastError.value = "Failed to fetch plan: ${e.message}"
+                    recordEvent(AutonomousEventType.RUN_FAILED, null, "Failed to fetch plan: ${e.message}")
+                    messageRepository.insert(MessageEntity(projectId = projectId, text = "Autonomous Run FAILED to fetch plan: ${e.message}", isUser = false))
+                    return@coroutineScope
+                }
             }
 
             val plan = try {
@@ -197,11 +254,37 @@ Return ONLY valid JSON. Do not include markdown blocks or other text.
                 val nextTask = getNextReadyTask(currentPlanVal)
                 if (nextTask == null) {
                     if (currentPlanVal.tasks.all { it.status == AutonomousTaskStatus.COMPLETED }) {
-                        _state.value = AutonomousState.COMPLETED
-                        _lastAction.value = "All tasks completed successfully."
-                        recordEvent(AutonomousEventType.RUN_COMPLETED, null, "All tasks completed successfully")
-                        messageRepository.insert(MessageEntity(projectId = projectId, text = "Autonomous Run Completed Successfully.", isUser = false))
-                        return@coroutineScope
+                        // Final Verification Gate: Build & Structural Validation
+                        _state.value = AutonomousState.BUILD_VALIDATING
+                        _lastAction.value = "Running final build and structural verification gate..."
+                        val finalFiles = fileRepository.getFilesForProject(projectId).firstOrNull() ?: emptyList()
+                        val validationResult = buildValidator.validateBuild(projectId, finalFiles)
+                        when (validationResult) {
+                            is BuildValidationResult.Success -> {
+                                _state.value = AutonomousState.COMPLETED
+                                _lastAction.value = "All tasks completed and verified with build validation: ${validationResult.message}"
+                                recordEvent(AutonomousEventType.BUILD_VALIDATED, null, validationResult.message)
+                                recordEvent(AutonomousEventType.RUN_COMPLETED, null, "All tasks completed and build validated successfully")
+                                messageRepository.insert(MessageEntity(projectId = projectId, text = "Autonomous Run Completed Successfully. Build Validation Passed: ${validationResult.message}", isUser = false))
+                                return@coroutineScope
+                            }
+                            is BuildValidationResult.Unsupported -> {
+                                _state.value = AutonomousState.COMPLETED
+                                _lastAction.value = "All tasks completed. Build validation limitation: ${validationResult.reason}"
+                                recordEvent(AutonomousEventType.BUILD_VALIDATED, null, "Build validation limitation: ${validationResult.reason}")
+                                recordEvent(AutonomousEventType.RUN_COMPLETED, null, "All tasks completed (Build validation limitation: ${validationResult.reason})")
+                                messageRepository.insert(MessageEntity(projectId = projectId, text = "Autonomous Run Completed. Note on Build Validation: ${validationResult.reason}", isUser = false))
+                                return@coroutineScope
+                            }
+                            is BuildValidationResult.Failure -> {
+                                _state.value = AutonomousState.FAILED
+                                _lastError.value = "Build validation failed: ${validationResult.message}"
+                                recordEvent(AutonomousEventType.BUILD_VALIDATION_FAILED, null, "Build validation failed: ${validationResult.errors.joinToString("; ")}")
+                                recordEvent(AutonomousEventType.RUN_FAILED, null, "Build validation failed: ${validationResult.message}")
+                                messageRepository.insert(MessageEntity(projectId = projectId, text = "Autonomous Run FAILED: Build validation gate failed.\n${validationResult.message}\nIssues:\n${validationResult.errors.joinToString("\n") { "- $it" }}", isUser = false))
+                                return@coroutineScope
+                            }
+                        }
                     } else if (currentPlanVal.tasks.any { it.status == AutonomousTaskStatus.BLOCKED || it.status == AutonomousTaskStatus.FAILED }) {
                         _state.value = AutonomousState.BLOCKED
                         _lastAction.value = "Execution blocked due to failed tasks."
@@ -246,6 +329,45 @@ Return ONLY valid JSON. Do not include markdown blocks or other text.
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
+                        val errorMsg = e.message ?: "Unknown error"
+                        val isAuthError = errorMsg.contains("401") || errorMsg.contains("API_KEY_INVALID", ignoreCase = true) || errorMsg.contains("authentication", ignoreCase = true)
+                        val isForbidden = errorMsg.contains("403") || errorMsg.contains("permission_denied", ignoreCase = true)
+                        val isQuota = errorMsg.contains("429") || errorMsg.contains("RESOURCE_EXHAUSTED", ignoreCase = true) || errorMsg.contains("quota", ignoreCase = true)
+                        val is404Model = errorMsg.contains("404") || errorMsg.contains("not found", ignoreCase = true) || errorMsg.contains("unsupported", ignoreCase = true)
+
+                        if (isAuthError) {
+                            _state.value = AutonomousState.FAILED
+                            _lastError.value = "Authentication failed for $providerName (HTTP 401). Please check your API key in Settings."
+                            recordEvent(AutonomousEventType.RUN_FAILED, nextTask.id, "Authentication failed for $providerName")
+                            messageRepository.insert(MessageEntity(projectId = projectId, text = "Autonomous Run FAILED: Authentication failed for $providerName.", isUser = false))
+                            return@coroutineScope
+                        }
+                        if (isForbidden) {
+                            _state.value = AutonomousState.FAILED
+                            _lastError.value = "Access forbidden for $providerName (HTTP 403)."
+                            recordEvent(AutonomousEventType.RUN_FAILED, nextTask.id, "Access forbidden for $providerName")
+                            messageRepository.insert(MessageEntity(projectId = projectId, text = "Autonomous Run FAILED: Access forbidden for $providerName.", isUser = false))
+                            return@coroutineScope
+                        }
+                        if (isQuota) {
+                            _state.value = AutonomousState.FAILED
+                            _lastError.value = "Quota or rate limit exceeded for $providerName (HTTP 429)."
+                            recordEvent(AutonomousEventType.RUN_FAILED, nextTask.id, "Quota exceeded for $providerName")
+                            messageRepository.insert(MessageEntity(projectId = projectId, text = "Autonomous Run FAILED: Quota or rate limit exceeded for $providerName.", isUser = false))
+                            return@coroutineScope
+                        }
+                        if (is404Model) {
+                            val cached = aiFactory.modelSelectionRepository.getCachedModels(providerName)
+                            val fallback = aiFactory.modelSelectionRepository.getCompatibleFallback(providerName, currentModel ?: "", cached)
+                            if (fallback != null && fallback.id != currentModel) {
+                                currentModel = fallback.id
+                                aiProvider = aiFactory.getProvider(projectName, providerName, fallback.id)
+                                recordEvent(AutonomousEventType.RETRY, nextTask.id, "Model unavailable. Switched to discovered model ${fallback.id}")
+                                messageRepository.insert(MessageEntity(projectId = projectId, text = "Model was unavailable. Switched to discovered model: ${fallback.id}", isUser = false))
+                                continue
+                            }
+                        }
+
                         consecutiveFailures++
                         _retryCount.value = consecutiveFailures
                         _lastError.value = "Generation failed: ${e.message}"
@@ -436,6 +558,10 @@ Return ONLY valid JSON. Do not include markdown blocks or other text.
             return ProposalValidationResult.Valid
         }
 
+        if (proposal.changes.size > 50) {
+            return ProposalValidationResult.Invalid("Too many file changes in proposal: maximum 50 (got ${proposal.changes.size})")
+        }
+
         val seenPaths = mutableSetOf<String>()
 
         for (change in proposal.changes) {
@@ -445,6 +571,9 @@ Return ONLY valid JSON. Do not include markdown blocks or other text.
             }
             if (path.contains("\u0000")) {
                 return ProposalValidationResult.Invalid("File path contains null byte: $path")
+            }
+            if (change.proposedContent.length > 500_000) {
+                return ProposalValidationResult.Invalid("File content exceeds 500KB limit for: $path")
             }
 
             val normalized = codeChangeApplier.normalizePath(path)
